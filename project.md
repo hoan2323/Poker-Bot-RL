@@ -1,41 +1,76 @@
 # PROJECT_SPEC.md
 
-# Poker Bot RL — Phase 1: Texas Hold'em Environment
+# Simplified Texas Hold'em Environment
 
-## Goal
+## Scope
 
-Implement only the game environment for a simplified Texas Hold'em Poker bot.
-
-This phase does **not** include:
-
-* Q-Learning
-* Training
-* Evaluation
-* Q-table
-* Visualization
-
-The only required files for this phase are:
+This phase only implements the game environment:
 
 ```text
 texas_holdenv.py
-test_env.py
 ```
 
-The final result must pass:
+This file creates the poker game environment for the bot.
 
-```bash
-pytest test_env.py
+Do not implement Q-Learning, training, evaluation, or visualization in this phase.
+
+---
+
+## File: `texas_holdenv.py`
+
+Status:
+
+```text
+DONE
+```
+
+Purpose:
+
+```text
+Create a simplified Texas Hold'em environment for a poker bot.
+```
+
+Required class:
+
+```python
+class SimplifiedTexasHoldemEnv(gym.Env):
+```
+
+The class must inherit from:
+
+```python
+gym.Env
 ```
 
 ---
 
 ## Game Rules
 
-Use a standard 52-card deck.
+This is a simplified Texas Hold'em game.
+
+There are 2 players:
+
+```text
+Player 0: Agent
+Player 1: Opponent
+```
+
+Reward is calculated from the Agent's perspective.
+
+---
+
+## Deck
+
+Use a 20-card deck:
+
+```text
+10, J, Q, K, A × 4 suits
+```
+
+Ranks:
 
 ```python
-ranks = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
-suits = ["C", "D", "H", "S"]
+[10, 11, 12, 13, 14]
 ```
 
 Rank mapping:
@@ -47,7 +82,13 @@ Rank mapping:
 14 = A
 ```
 
-Card format:
+Suits:
+
+```python
+["C", "D", "H", "S"]
+```
+
+Each card should be represented as:
 
 ```python
 (rank, suit)
@@ -60,19 +101,10 @@ Example:
 (10, "H")  # Ten of Hearts
 ```
 
-There are 2 players:
+Total cards:
 
 ```text
-Player 0: main agent
-Player 1: opponent
-```
-
-Reward is always from Player 0's perspective:
-
-```text
-Player 0 wins  -> +2
-Player 0 loses -> -2
-Draw           -> 0
+5 ranks × 4 suits = 20 cards
 ```
 
 ---
@@ -82,45 +114,83 @@ Draw           -> 0
 The environment has 3 actions:
 
 ```text
-0 = Check
+0 = Check / Call
 1 = Bet
 2 = Fold
 ```
 
-Declare:
+Declare in `__init__()`:
 
 ```python
 self.action_space = spaces.Discrete(3)
 ```
 
-Action behavior:
+Action meaning depends on the current betting state.
 
-| Action | Meaning                          |
-| ------ | -------------------------------- |
-| Check  | Pass turn without betting        |
-| Bet    | Add 1 chip to the pot            |
-| Fold   | Current player loses immediately |
+### When there is no active bet
+
+Allowed actions:
+
+```text
+0 = Check
+1 = Bet
+```
+
+Not allowed:
+
+```text
+2 = Fold
+```
+
+### When there is an active bet
+
+Allowed actions:
+
+```text
+0 = Call
+2 = Fold
+```
+
+Not allowed:
+
+```text
+1 = Bet
+```
+
+There is no raise.
 
 ---
 
-## Observation
+## Observation Space
 
-Player 0 must not see Player 1's cards.
+Declare an observation space in `__init__()`.
 
-Observation format:
+The state should include enough information for the agent to act, such as:
 
 ```text
-[hole_1, hole_2, community_1, community_2, community_3, phase, current_player]
+Agent hole cards
+Community cards
+Current round
+Current player
+Pot size
+Whether there is an active bet
 ```
 
-Use `-1` for unknown community cards.
+The agent must not see the opponent's hole cards.
 
-Phase values:
+A recommended state format:
 
 ```text
-0 = preflop
+[hole_1, hole_2, flop_1, flop_2, flop_3, round, current_player, pot, has_active_bet]
+```
+
+Use `-1` for unknown community cards before the flop is revealed.
+
+Round values:
+
+```text
+0 = pre-flop
 1 = flop
-2 = showdown
 ```
 
 Current player values:
@@ -130,355 +200,437 @@ Current player values:
 1 = Player 1
 ```
 
-Observation space:
+Bet state:
 
-```python
-self.observation_space = spaces.Box(
-    low=-1,
-    high=51,
-    shape=(7,),
-    dtype=np.int32
-)
+```text
+0 = no active bet
+1 = active bet
 ```
-
-Cards should be encoded as integers from `0` to `51`.
 
 ---
 
-## File: `texas_holdenv.py`
+## `__init__()`
 
-Create a Gymnasium-compatible environment:
+The `__init__()` method must:
 
-```python
-class TexasHoldemEnv(gym.Env):
-```
+1. Declare `action_space`
+2. Declare `observation_space`
+3. Initialize the 20-card deck
+4. Initialize internal game state
 
-Optional alias for compatibility:
-
-```python
-KuhnPokerEnv = TexasHoldemEnv
-```
-
-Required methods:
-
-```python
-__init__()
-reset()
-step(action)
-_create_deck()
-_card_to_id(card)
-_get_obs()
-_reveal_flop()
-_resolve_showdown()
-```
-
-Internal state:
+Required internal variables:
 
 ```python
 self.deck
 self.player_hands
 self.community_cards
 self.pot
-self.phase
+self.round
 self.current_player
+self.has_active_bet
+self.bettor
 self.done
-self.round_actions
+self.actions_this_round
 ```
 
 ---
 
-## Task 1 — Initialize Environment and `reset()`
+## `reset()`
 
-Implement:
+The `reset()` method must:
+
+1. Shuffle the deck
+2. Deal 2 hole cards to each player
+3. Keep community cards hidden at the start
+4. Reset the pot
+5. Reset the round to pre-flop
+6. Reset the current player
+7. Reset betting state
+8. Reset game status
+9. Return the initial state
+
+Initial game values:
 
 ```python
-__init__()
-_create_deck()
-_card_to_id(card)
-_get_obs()
-reset()
+self.pot = 2
+self.round = "preflop"
+self.current_player = 0
+self.has_active_bet = False
+self.bettor = None
+self.done = False
+self.actions_this_round = []
+self.community_cards = []
 ```
 
-`reset()` must:
+Return format:
 
-1. Create a 52-card deck
-2. Shuffle the deck
-3. Deal 2 cards to Player 0
-4. Deal 2 cards to Player 1
-5. Set community cards to empty
-6. Set pot to `2`
-7. Set phase to `"preflop"`
-8. Set current player to `0`
-9. Set done to `False`
-10. Return `(state, info)`
+```python
+state, info
+```
 
-Task 1 is complete when:
+---
+
+## `step(action)`
+
+The `step(action)` method must:
+
+1. Check if the game is already done
+2. Validate the action based on the current context
+3. Apply the action
+4. Update pot
+5. Update betting state
+6. Update current player
+7. Move to the next round if needed
+8. Reveal the flop after pre-flop ends
+9. Trigger showdown after flop ends
+10. Return the result
+
+Return format:
+
+```python
+next_state, reward, done, info
+```
+
+---
+
+## Action Validation
+
+### Invalid action examples
+
+If there is no active bet:
 
 ```text
-[ ] texas_holdenv.py exists
-[ ] TexasHoldemEnv can be imported
-[ ] action_space is Discrete(3)
-[ ] observation_space is valid
-[ ] reset() runs without error
-[ ] each player receives 2 cards
-[ ] reset() returns state and info
+Fold is invalid.
+```
+
+Allowed:
+
+```text
+Check
+Bet
+```
+
+If there is an active bet:
+
+```text
+Bet is invalid.
+```
+
+Allowed:
+
+```text
+Call
+Fold
+```
+
+If the action is invalid, raise:
+
+```python
+ValueError
 ```
 
 ---
 
-## Task 2 — Implement `step()` and Flop Logic
+## Betting Logic
 
-`step(action)` must return:
+### Check
+
+When action is:
 
 ```python
-state, reward, terminated, truncated, info
+0
 ```
 
-`truncated` should always be `False`.
+and there is no active bet:
+
+```text
+The player checks.
+No chips are added.
+Turn passes to the other player.
+```
+
+### Bet
+
+When action is:
+
+```python
+1
+```
+
+and there is no active bet:
+
+```text
+The player bets 1 chip.
+Pot increases by 1.
+The betting state becomes active.
+The bettor is stored.
+Turn passes to the other player.
+```
+
+### Call
+
+When action is:
+
+```python
+0
+```
+
+and there is an active bet:
+
+```text
+The player calls.
+Pot increases by 1.
+The active bet is cleared.
+The betting round ends.
+```
 
 ### Fold
 
-If the current player folds:
+When action is:
 
-```text
-The other player wins.
-The game ends immediately.
+```python
+2
 ```
 
-Reward:
+and there is an active bet:
 
 ```text
-Player 0 wins  -> +2
-Player 0 loses -> -2
+The player folds.
+The other player wins immediately.
+The game ends.
 ```
 
-### Check / Bet
+---
 
-If action is Check:
+## Round Logic
+
+There are only 2 rounds:
 
 ```text
-Do not change pot.
-Save action.
-Move to next player or next phase.
+1. Pre-flop
+2. Flop
 ```
 
-If action is Bet:
+There is no turn.
+
+There is no river.
+
+There is no raise.
+
+Each round ends when:
 
 ```text
-pot += 1
-Save action.
-Move to next player or next phase.
+Both players check
 ```
 
-### Preflop
+or:
 
-Both players act once.
+```text
+One player bets and the other player calls
+```
 
-If nobody folds:
+or:
+
+```text
+One player folds
+```
+
+---
+
+## Pre-flop Logic
+
+At the start:
+
+```text
+round = preflop
+community_cards = []
+current_player = 0
+```
+
+If the pre-flop round ends and nobody folds:
 
 ```text
 Reveal 3 community cards.
-phase = "flop"
-current_player = 0
-round_actions = []
+Move to flop round.
+Reset betting state.
+Set current_player = 0.
 ```
 
-### Flop
+---
 
-Both players act once.
+## Flop Logic
 
-If nobody folds:
+During the flop round:
+
+```text
+Players can check, bet, call, or fold based on betting state.
+```
+
+If the flop round ends and nobody folds:
 
 ```text
 Go to showdown.
-Compare hands.
+Compare hands using hand_evaluator.py.
 End the game.
+```
+
+---
+
+## Dealing Logic
+
+The deck contains 20 cards.
+
+Deal:
+
+```text
+Player 0: 2 hole cards
+Player 1: 2 hole cards
+Community: 3 flop cards
+```
+
+Total cards used per game:
+
+```text
+7 cards
+```
+
+No duplicate cards are allowed.
+
+---
+
+## Winner Logic
+
+### Fold
+
+If a player folds:
+
+```text
+The other player wins immediately.
 ```
 
 ### Showdown
 
-Each player has 5 cards:
+If no player folds:
+
+```text
+Compare both players' hands using hand_evaluator.py.
+```
+
+Each player has:
 
 ```text
 2 hole cards + 3 community cards
 ```
 
-Determine the winner.
-
-For this phase, a simple hand evaluator can be implemented directly inside `texas_holdenv.py`.
-
-Task 2 is complete when:
+The hand evaluator should determine:
 
 ```text
-[ ] step(0) works
-[ ] step(1) works
-[ ] step(2) works
+Player 0 wins
+Player 1 wins
+Draw
+```
+
+---
+
+## Reward Logic
+
+Reward is calculated from Player 0's perspective.
+
+```text
+Player 0 wins: +pot
+Player 0 loses: -pot
+Draw: 0
+```
+
+Examples:
+
+```text
+If pot = 4 and Player 0 wins  => reward = +4
+If pot = 4 and Player 0 loses => reward = -4
+If draw                       => reward = 0
+```
+
+---
+
+## Expected Helper Methods
+
+Recommended helper methods:
+
+```python
+_create_deck()
+_shuffle_deck()
+_deal_cards()
+_card_to_id(card)
+_get_obs()
+_validate_action(action)
+_apply_action(action)
+_switch_player()
+_end_round()
+_reveal_flop()
+_showdown()
+_get_reward(winner)
+```
+
+---
+
+## Acceptance Criteria
+
+The environment is complete when:
+
+```text
+[ ] File texas_holdenv.py exists
+[ ] Class SimplifiedTexasHoldemEnv exists
+[ ] Class inherits from gym.Env
+[ ] action_space has 3 actions
+[ ] observation_space is declared
+[ ] Deck has exactly 20 unique cards
+[ ] reset() shuffles the deck
+[ ] reset() deals 2 cards to each player
+[ ] reset() does not reveal the flop
+[ ] reset() resets pot, round, current player, and bet state
+[ ] step(action) validates actions by context
+[ ] Check works when there is no active bet
+[ ] Bet works when there is no active bet
+[ ] Call works when there is an active bet
+[ ] Fold works when there is an active bet
+[ ] Invalid actions raise ValueError
+[ ] Pre-flop ends correctly
+[ ] Flop reveals exactly 3 community cards
+[ ] Flop round ends correctly
 [ ] Fold ends the game immediately
-[ ] Check/Check in preflop reveals the flop
-[ ] Flop contains exactly 3 community cards
-[ ] Check/Check in flop goes to showdown
-[ ] One full game can be played from start to finish
-[ ] Reward is only -2, 0, or +2
+[ ] Showdown uses hand_evaluator.py
+[ ] Reward is +pot, -pot, or 0
+[ ] No turn or river is implemented
+[ ] No raise logic is implemented
 ```
 
 ---
 
-## Task 3 — Write Environment Tests
+## Important Constraints
 
-Create:
-
-```text
-test_env.py
-```
-
-Run:
-
-```bash
-pytest test_env.py
-```
-
-Required tests:
-
-```python
-def test_reset_runs():
-    env = TexasHoldemEnv()
-    state, info = env.reset()
-    assert state is not None
-    assert isinstance(info, dict)
-```
-
-```python
-def test_action_space():
-    env = TexasHoldemEnv()
-    assert env.action_space.n == 3
-```
-
-```python
-def test_deal_two_cards_each_player():
-    env = TexasHoldemEnv()
-    env.reset()
-    assert len(env.player_hands[0]) == 2
-    assert len(env.player_hands[1]) == 2
-```
-
-```python
-def test_no_duplicate_hole_cards():
-    env = TexasHoldemEnv()
-    env.reset()
-    cards = env.player_hands[0] + env.player_hands[1]
-    assert len(cards) == len(set(cards))
-```
-
-```python
-def test_fold_ends_game():
-    env = TexasHoldemEnv()
-    env.reset()
-    state, reward, terminated, truncated, info = env.step(2)
-
-    assert terminated is True
-    assert truncated is False
-    assert reward in [-2, 2]
-    assert info["winner"] in [0, 1]
-```
-
-```python
-def test_check_check_reveals_flop():
-    env = TexasHoldemEnv()
-    env.reset()
-
-    env.step(0)
-    state, reward, terminated, truncated, info = env.step(0)
-
-    assert env.phase == "flop"
-    assert len(env.community_cards) == 3
-    assert terminated is False
-```
-
-```python
-def test_showdown_after_flop_actions():
-    env = TexasHoldemEnv()
-    env.reset()
-
-    env.step(0)
-    env.step(0)
-
-    env.step(0)
-    state, reward, terminated, truncated, info = env.step(0)
-
-    assert terminated is True
-    assert truncated is False
-    assert reward in [-2, 0, 2]
-    assert info["winner"] in [0, 1, None]
-```
-
-```python
-def test_game_can_finish():
-    env = TexasHoldemEnv()
-    state, info = env.reset()
-
-    terminated = False
-    reward = 0
-
-    for _ in range(10):
-        if terminated:
-            break
-
-        action = env.action_space.sample()
-        state, reward, terminated, truncated, info = env.step(action)
-
-    assert terminated is True
-    assert truncated is False
-    assert reward in [-2, 0, 2]
-```
-
----
-
-## Phase 1 Acceptance Criteria
-
-Phase 1 is complete when:
+Do not implement:
 
 ```text
-[ ] texas_holdenv.py exists
-[ ] test_env.py exists
-[ ] TexasHoldemEnv imports successfully
-[ ] reset() runs without error
-[ ] step() runs without error
-[ ] Fold ends the game correctly
-[ ] Check/Check in preflop reveals the flop
-[ ] Flop has exactly 3 community cards
-[ ] Check/Check in flop triggers showdown
-[ ] One full game can finish
-[ ] Reward is always -2, 0, or +2
-[ ] pytest test_env.py passes all tests
+Q-Learning
+Training
+Evaluation
+Visualization
+Turn
+River
+Raise
+Multiple betting cycles
 ```
 
----
-
-## Important Notes for Codex
-
-Only implement Phase 1.
-
-Do not create or implement:
+Only implement:
 
 ```text
-q_learning_agent.py
-train.py
-evaluate.py
-q_table.npy
-rewards.npy
-win_rates.npy
-visualization
-```
-
-Focus only on:
-
-```text
-1. texas_holdenv.py
-2. reset()
-3. step()
-4. flop logic
-5. fold logic
-6. simple showdown logic
-7. test_env.py
-8. fixing bugs until all tests pass
+SimplifiedTexasHoldemEnv
+20-card deck
+Pre-flop
+Flop
+Check / Call
+Bet
+Fold
+Showdown
+Reward by pot
 ```
