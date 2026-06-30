@@ -25,6 +25,7 @@ poker-bot/
 ├── texas_holdenv.py
 ├── hand_evaluator.py
 ├── q_learning_agent.py
+├── opponent_model.py
 ├── train.py
 ├── evaluate.py
 ├── test_env.py
@@ -141,7 +142,8 @@ State abstraction:
   kicker_bucket,
   pot_bucket,
   has_active_bet,
-  round
+  round,
+  opponent_profile
 )
 ```
 
@@ -154,10 +156,21 @@ Pot buckets:
 3 = 7+
 ```
 
+Opponent profile buckets:
+
+```text
+0 = unknown/balanced
+1 = call_station
+2 = aggressive
+3 = tight/passive
+4 = tricky/mixed
+```
+
 Agent behavior:
 
 - epsilon-greedy action selection
 - valid actions only
+- opponent-aware state key
 - dictionary-based Q-table
 - save/load with NumPy
 
@@ -183,14 +196,15 @@ A tiny Player 0-only shaping reward is added for pot-risk learning:
 Training flow:
 
 1. Reset environment
-2. Check current acting player
-3. Agent acts if Player 0
-4. Weighted opponent action if Player 1
-5. Step environment
-6. Update Q-table only when Player 0 acted
-7. Track rewards and win rates
-8. Decay epsilon
-9. Save outputs:
+2. Create fresh `OpponentModel`
+3. Check current acting player
+4. Agent acts if Player 0 with current opponent profile
+5. Weighted opponent action if Player 1
+6. Record opponent action into `OpponentModel`
+7. Use delayed update: update Player 0 transition only after next Player 0 decision point or terminal state
+8. Track rewards and win rates
+9. Decay epsilon
+10. Save outputs:
    - `q_table.npy`
    - `rewards.npy`
    - `win_rates.npy`
@@ -228,6 +242,7 @@ Coverage:
 - showdown flow
 - reproducible seeding
 - Q-learning state/action/update/save/load behavior
+- opponent profile feature in state key
 
 ---
 
@@ -341,6 +356,7 @@ python evaluate.py
 - [x] `texas_holdenv.py` exists
 - [x] `hand_evaluator.py` exists
 - [x] `q_learning_agent.py` exists
+- [x] `opponent_model.py` exists
 - [x] `train.py` exists
 - [x] `evaluate.py` exists
 - [x] `test_env.py` exists

@@ -1,6 +1,7 @@
 import numpy as np
 
 from q_learning_agent import QLearningAgent
+from opponent_model import OpponentModel
 
 
 def sample_state():
@@ -21,7 +22,7 @@ def test_get_state_key_returns_tuple():
     agent = QLearningAgent(action_size=3)
     key = agent.get_state_key(sample_state())
     assert isinstance(key, tuple)
-    assert len(key) == 13
+    assert len(key) == 14
 
 
 def test_get_state_key_sets_hand_aware_flags():
@@ -29,7 +30,7 @@ def test_get_state_key_sets_hand_aware_flags():
     # Ah Kh with flop Ac Qh Jh => one pair, top pair, flush draw, straight draw, pot bucket 1, round flop
     state = np.array([18, 14, 16, 10, 6, -1, -1, 1, 0, 4, 0], dtype=np.int32)
     key = agent.get_state_key(state)
-    assert key == (1, 0, 1, 0, 0, 1, 1, 1, 0, 3, 1, 0, 1)
+    assert key == (1, 0, 1, 0, 0, 1, 1, 1, 0, 3, 1, 0, 1, 0)
 
 
 def test_get_state_key_sets_draw_and_risk_flags():
@@ -37,7 +38,7 @@ def test_get_state_key_sets_draw_and_risk_flags():
     # Ah Kh with Qh Jh 10D => flush draw, broadway straight draw, large pot, active bet
     state = np.array([18, 14, 10, 6, 1, -1, -1, 1, 0, 7, 1], dtype=np.int32)
     key = agent.get_state_key(state)
-    assert key == (4, 2, 0, 0, 0, 1, 1, 0, 0, 3, 3, 1, 1)
+    assert key == (4, 2, 0, 0, 0, 1, 1, 0, 0, 3, 3, 1, 1, 0)
 
 
 def test_get_state_key_sets_overpair():
@@ -47,6 +48,12 @@ def test_get_state_key_sets_overpair():
     key = agent.get_state_key(state)
     assert key[8] == 1
     assert key[10] == 2
+
+
+def test_get_state_key_includes_opponent_profile():
+    agent = QLearningAgent(action_size=3)
+    key = agent.get_state_key(sample_state(), opponent_profile=OpponentModel.CALL_STATION)
+    assert key[-1] == OpponentModel.CALL_STATION
 
 
 def test_choose_action_only_chooses_valid_actions():

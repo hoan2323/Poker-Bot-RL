@@ -7,6 +7,7 @@ import numpy as np
 
 from texas_holdenv import TexasHoldemEnv
 from q_learning_agent import QLearningAgent
+from opponent_model import OpponentModel
 
 
 EVAL_GAMES = 5000
@@ -237,7 +238,15 @@ def init_action_diagnostics():
 
 
 def q_policy(agent):
-    return lambda state, valid_actions: agent.choose_action(state, valid_actions)
+    def policy(state, valid_actions, opponent_profile=0):
+        return agent.choose_action(
+            state,
+            valid_actions,
+            opponent_profile=opponent_profile,
+        )
+
+    policy.uses_opponent_model = True
+    return policy
 
 
 @dataclass
@@ -266,13 +275,21 @@ def run_episode(env, policy0, policy1, starting_player=0):
     folds_when_facing_bet = 0
     faced_bet_count = 0
     action_diagnostics = init_action_diagnostics()
+    opponent_model = OpponentModel()
 
     while not terminated and not truncated:
         acting_player = env.current_player
         valid_actions = env.get_valid_actions()
         policy_state = observation_for_player(env, acting_player)
         policy = policy0 if acting_player == 0 else policy1
-        action = policy(policy_state, valid_actions)
+        if acting_player == 0 and getattr(policy, "uses_opponent_model", False):
+            action = policy(
+                policy_state,
+                valid_actions,
+                opponent_profile=opponent_model.profile_bucket(),
+            )
+        else:
+            action = policy(policy_state, valid_actions)
 
         if acting_player == 0:
             strength = hand_strength_bucket(policy_state)
@@ -290,6 +307,8 @@ def run_episode(env, policy0, policy1, starting_player=0):
                 folds_when_facing_bet += 1
 
         next_state, reward, terminated, truncated, info = env.step(action)
+        if acting_player == 1:
+            opponent_model.record_action(valid_actions, action)
         state = next_state
         total_reward += reward
         final_info = info

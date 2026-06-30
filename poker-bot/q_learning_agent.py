@@ -184,12 +184,13 @@ class QLearningAgent:
             return 2
         return 3
 
-    def get_state_key(self, state):
+    def get_state_key(self, state, opponent_profile=0):
         hole_cards = [int(state[0]), int(state[1])]
         community_cards = [int(card) for card in state[2:7]]
         round_index = int(state[7])
         pot = int(state[9])
         has_active_bet = int(state[10])
+        opponent_profile = int(opponent_profile)
 
         made_hand_rank = self._made_hand_rank(hole_cards, community_cards)
         best_current_hand_rank = self._best_current_hand_rank_bucket(made_hand_rank)
@@ -208,6 +209,7 @@ class QLearningAgent:
             self._get_pot_bucket(pot),
             has_active_bet,
             round_index,
+            opponent_profile,
         )
         return state_key
 
@@ -215,11 +217,11 @@ class QLearningAgent:
         if state_key not in self.q_table:
             self.q_table[state_key] = np.zeros(self.action_size, dtype=np.float64)
 
-    def choose_action(self, state, valid_actions):
+    def choose_action(self, state, valid_actions, opponent_profile=0):
         if not valid_actions:
             raise ValueError("valid_actions must not be empty")
 
-        state_key = self.get_state_key(state)
+        state_key = self.get_state_key(state, opponent_profile)
         self._ensure_state(state_key)
 
         if random.random() < self.epsilon:
@@ -228,8 +230,18 @@ class QLearningAgent:
         q_values = self.q_table[state_key]
         return max(valid_actions, key=lambda action: q_values[action])
 
-    def update(self, state, action, reward, next_state, done, valid_next_actions):
-        state_key = self.get_state_key(state)
+    def update(
+        self,
+        state,
+        action,
+        reward,
+        next_state,
+        done,
+        valid_next_actions,
+        opponent_profile=0,
+        next_opponent_profile=None,
+    ):
+        state_key = self.get_state_key(state, opponent_profile)
         self._ensure_state(state_key)
 
         current_q = self.q_table[state_key][action]
@@ -237,7 +249,9 @@ class QLearningAgent:
         if done or not valid_next_actions:
             target = reward
         else:
-            next_state_key = self.get_state_key(next_state)
+            if next_opponent_profile is None:
+                next_opponent_profile = opponent_profile
+            next_state_key = self.get_state_key(next_state, next_opponent_profile)
             self._ensure_state(next_state_key)
             next_q = max(
                 self.q_table[next_state_key][next_action]

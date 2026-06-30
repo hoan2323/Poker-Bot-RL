@@ -3,6 +3,7 @@ import numpy as np
 
 from texas_holdenv import TexasHoldemEnv
 from q_learning_agent import QLearningAgent
+from opponent_model import OpponentModel
 from evaluate import (
     always_bet_policy,
     call_station_policy,
@@ -162,34 +163,76 @@ def run_training():
 
         starting_player = episode % 2
         state, info = env.reset(options={"starting_player": starting_player})
+        opponent_model = OpponentModel()
         terminated = False
         truncated = False
         total_reward = 0
+        pending_transition = None
 
         while not terminated and not truncated:
             acting_player = env.current_player
             valid_actions = env.get_valid_actions()
             policy_state = observation_for_player(env, acting_player)
 
+            opponent_profile = opponent_model.profile_bucket()
+
             if acting_player == 0:
-                action = agent.choose_action(policy_state, valid_actions)
+                if pending_transition is not None:
+                    pending_transition["next_state"] = policy_state
+                    pending_transition["next_opponent_profile"] = opponent_profile
+                    pending_transition["valid_next_actions"] = valid_actions
+                    agent.update(
+                        pending_transition["state"],
+                        pending_transition["action"],
+                        pending_transition["reward"],
+                        pending_transition["next_state"],
+                        False,
+                        pending_transition["valid_next_actions"],
+                        opponent_profile=pending_transition["opponent_profile"],
+                        next_opponent_profile=pending_transition["next_opponent_profile"],
+                    )
+                    pending_transition = None
+
+                action = agent.choose_action(
+                    policy_state,
+                    valid_actions,
+                    opponent_profile=opponent_profile,
+                )
             else:
                 action = opponent_policy(policy_state, valid_actions)
 
             next_state, reward, terminated, truncated, info = env.step(action)
 
+            if acting_player == 1:
+                opponent_model.record_action(valid_actions, action)
+
             if acting_player == 0:
                 training_reward = reward + shaping_reward(agent, policy_state, action, valid_actions)
+                pending_transition = {
+                    "state": policy_state,
+                    "action": action,
+                    "reward": training_reward,
+                    "opponent_profile": opponent_profile,
+                    "next_state": None,
+                    "next_opponent_profile": opponent_model.profile_bucket(),
+                    "valid_next_actions": [],
+                }
+            elif pending_transition is not None:
+                pending_transition["reward"] += reward
+
+            if (terminated or truncated) and pending_transition is not None:
                 next_policy_state = observation_for_player(env, 0)
-                valid_next_actions = [] if terminated or truncated else env.get_valid_actions()
                 agent.update(
-                    policy_state,
-                    action,
-                    training_reward,
+                    pending_transition["state"],
+                    pending_transition["action"],
+                    pending_transition["reward"],
                     next_policy_state,
-                    terminated or truncated,
-                    valid_next_actions,
+                    True,
+                    [],
+                    opponent_profile=pending_transition["opponent_profile"],
+                    next_opponent_profile=opponent_model.profile_bucket(),
                 )
+                pending_transition = None
 
             state = next_state
             total_reward += reward
