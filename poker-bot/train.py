@@ -37,10 +37,11 @@ OPPONENT_WEIGHTS = {
 }
 
 
-def choose_training_opponent():
-    names = list(OPPONENT_WEIGHTS.keys())
-    weights = [OPPONENT_WEIGHTS[name] for name in names]
-    name = random.choices(names, weights=weights, k=1)[0]
+def choose_training_opponent(episode):
+    names = list(OPPONENT_POLICIES.keys())
+    block_size = 100
+    idx = (episode // block_size) % len(names)
+    name = names[idx]
     return name, OPPONENT_POLICIES[name]
 
 
@@ -96,42 +97,43 @@ def shaping_reward(agent, state, action, valid_actions):
     )
     weak_hand = not strong_hand and not medium_hand
 
-    # No active bet: use small nudges only.
     if has_active_bet == 0 and 1 in valid_actions:
         if weak_hand:
-            if action == 1:  # bluff bet
-                reward -= 0.002
-            elif action == 0:  # check
-                reward += 0.003
-        elif medium_hand:
-            if action == 1:  # mixed value/semi-bluff
-                reward += 0.035
-            elif action == 0:  # check less often
-                reward -= 0.010
-        elif strong_hand:
-            if action == 1:  # value bet
-                reward += 0.120 if pot_bucket <= 1 else 0.150
-            elif action == 0:  # slowplay less often
-                reward -= 0.060 if pot_bucket <= 1 else 0.080
+            if action == 1:
+                reward -= 0.030
+            elif action == 0:
+                reward += 0.005
 
-    # Facing bet: strongest shaping should be on bad weak calls in bigger pots.
+        elif medium_hand:
+            if action == 1:
+                reward += 0.020
+            elif action == 0:
+                reward -= 0.005
+
+        elif strong_hand:
+            if action == 1:
+                reward += 0.150
+            elif action == 0:
+                reward -= 0.080
+
+    # Facing bet
     if has_active_bet == 1 and 2 in valid_actions:
         if weak_hand:
-            if action == 0:  # call
-                reward -= 0.030 if pot_bucket <= 1 else 0.050
+            if action == 0:
+                reward -= 0.010 if pot_bucket <= 1 else 0.020
+
         elif medium_hand:
-            if action == 0 and pot_bucket <= 1:  # call smaller pots more often
-                reward += 0.012
-            elif action == 0 and pot_bucket >= 2:  # don't station big pots too much
-                reward -= 0.025
-            elif action == 2 and pot_bucket >= 2:
-                reward += 0.012
+            if action == 0 and pot_bucket <= 1:
+                reward += 0.010
+            elif action == 0 and pot_bucket >= 2:
+                reward -= 0.020
             elif action == 2 and pot_bucket <= 1:
                 reward -= 0.008
+
         elif strong_hand:
-            if action == 0:  # call
+            if action == 0:
                 reward += 0.020 if pot_bucket <= 1 else 0.035
-            elif action == 2:  # fold
+            elif action == 2:
                 reward -= 0.090 if pot_bucket <= 1 else 0.120
 
     return reward
@@ -160,7 +162,7 @@ def run_training():
     opponent_models = {name: OpponentModel() for name in OPPONENT_POLICIES}
 
     for episode in range(EPISODES):
-        opponent_name, opponent_policy = choose_training_opponent()
+        opponent_name, opponent_policy = choose_training_opponent(episode)
         opponent_counts[opponent_name] += 1
 
         starting_player = episode % 2
