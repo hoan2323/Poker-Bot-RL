@@ -266,7 +266,7 @@ class EpisodeResult:
     action_diagnostics: dict = field(default_factory=dict)
 
 
-def run_episode(env, policy0, policy1, starting_player=0):
+def run_episode(env, policy0, policy1, starting_player=0, opponent_model=None):
     state, info = env.reset(options={"starting_player": starting_player})
     terminated = False
     truncated = False
@@ -275,7 +275,8 @@ def run_episode(env, policy0, policy1, starting_player=0):
     folds_when_facing_bet = 0
     faced_bet_count = 0
     action_diagnostics = init_action_diagnostics()
-    opponent_model = OpponentModel()
+    if opponent_model is None:
+        opponent_model = OpponentModel()
 
     while not terminated and not truncated:
         acting_player = env.current_player
@@ -428,9 +429,10 @@ def summarize_results(results):
 
 def evaluate_matchup(label, policy0, policy1, env, games=EVAL_GAMES):
     results = []
+    opponent_model = OpponentModel()
     for game_idx in range(games):
         starting_player = game_idx % 2
-        results.append(run_episode(env, policy0, policy1, starting_player=starting_player))
+        results.append(run_episode(env, policy0, policy1, starting_player=starting_player, opponent_model=opponent_model))
     summary = summarize_results(results)
     summary["label"] = label
     return summary

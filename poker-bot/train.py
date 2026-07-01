@@ -156,6 +156,7 @@ def run_training():
     losses = 0
 
     opponent_counts = {name: 0 for name in OPPONENT_POLICIES}
+    opponent_models = {name: OpponentModel() for name in OPPONENT_POLICIES}
 
     for episode in range(EPISODES):
         opponent_name, opponent_policy = choose_training_opponent()
@@ -163,7 +164,7 @@ def run_training():
 
         starting_player = episode % 2
         state, info = env.reset(options={"starting_player": starting_player})
-        opponent_model = OpponentModel()
+        opponent_model = opponent_models[opponent_name]
         terminated = False
         truncated = False
         total_reward = 0

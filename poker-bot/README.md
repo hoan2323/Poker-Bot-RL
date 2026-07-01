@@ -195,16 +195,17 @@ A tiny Player 0-only shaping reward is added for pot-risk learning:
 
 Training flow:
 
-1. Reset environment
-2. Create fresh `OpponentModel`
-3. Check current acting player
-4. Agent acts if Player 0 with current opponent profile
-5. Weighted opponent action if Player 1
-6. Record opponent action into `OpponentModel`
-7. Use delayed update: update Player 0 transition only after next Player 0 decision point or terminal state
-8. Track rewards and win rates
-9. Decay epsilon
-10. Save outputs:
+1. Create one persistent `OpponentModel` per opponent style
+2. Reset environment each episode
+3. Select weighted opponent style and reuse its existing `OpponentModel`
+4. Check current acting player
+5. Agent acts if Player 0 with current opponent profile
+6. Weighted opponent action if Player 1
+7. Record opponent action into that style's persistent `OpponentModel`
+8. Use delayed update: update Player 0 transition only after next Player 0 decision point or terminal state
+9. Track rewards and win rates
+10. Decay epsilon
+11. Save outputs:
    - `q_table.npy`
    - `rewards.npy`
    - `win_rates.npy`
