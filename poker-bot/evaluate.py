@@ -29,7 +29,8 @@ def observation_for_player(env, player):
     obs[0] = env._card_to_id(env.player_hands[player][0])
     obs[1] = env._card_to_id(env.player_hands[player][1])
     obs[8] = env.current_player
-    return obs
+    actions_this_round_count = min(len(env.actions_this_round), 2)
+    return np.append(obs, actions_this_round_count).astype(np.int32)
 
 
 def visible_board_cards(state):
@@ -345,6 +346,7 @@ def summarize_results(results):
     fold_ends = sum(1 for r in results if r.fold_ending)
     showdown_ends = sum(1 for r in results if r.showdown_ending)
     fold_wins = sum(1 for r in results if r.fold_ending and r.reward > 0)
+    fold_losses = sum(1 for r in results if r.fold_ending and r.reward < 0)
     showdown_wins = sum(1 for r in results if r.showdown_ending and r.reward > 0)
     showdown_losses = sum(1 for r in results if r.showdown_ending and r.reward < 0)
     showdown_draws = sum(1 for r in results if r.showdown_ending and r.reward == 0)
@@ -409,6 +411,7 @@ def summarize_results(results):
         "win_rate": wins / len(results) if results else 0.0,
         "avg_reward": avg_reward,
         "fold_wins": fold_wins,
+        "fold_losses": fold_losses,
         "showdown_wins": showdown_wins,
         "showdown_losses": showdown_losses,
         "showdown_draws": showdown_draws,
@@ -438,10 +441,41 @@ def evaluate_matchup(label, policy0, policy1, env, games=EVAL_GAMES):
     return summary
 
 
+def print_action_diagnostics(rows):
+    print("\nPot Diagnostics:")
+    print(f"{'Mode':<24} {'AvgPot':>8} {'AvgWinPot':>10} {'AvgLossPot':>11} {'LargePotWR':>10}")
+    for row in rows:
+        print(
+            f"{row['label']:<24} "
+            f"{row['avg_pot']:>8.3f} "
+            f"{row['avg_win_pot']:>10.3f} "
+            f"{row['avg_loss_pot']:>11.3f} "
+            f"{row['large_pot_win_rate']:>10.4f}"
+        )
+
+    print("\nAction Diagnostics:")
+    print(f"{'Mode':<24} {'Strength':<8} {'Actions':>8} {'Bet':>8} {'Call':>8} {'Fold':>8} {'AvgReward':>10} {'LargePotLoss':>12}")
+    for row in rows:
+        for strength, stats in row["action_diagnostics"].items():
+            print(
+                f"{row['label']:<24} "
+                f"{strength:<8} "
+                f"{stats['actions']:>8} "
+                f"{stats['bet_rate']:>8.4f} "
+                f"{stats['call_rate']:>8.4f} "
+                f"{stats['fold_rate']:>8.4f} "
+                f"{stats['avg_reward']:>10.4f} "
+                f"{stats['large_pot_loss_count']:>12}"
+            )
+
+
 def print_table(rows):
     print("Evaluation Summary - 20-card Short Deck")
     print()
-    print(f"{'Mode':<24} {'Games':>7} {'WinRate':>9} {'AvgReward':>11} {'FoldWins':>10} {'ShowdownW/L':>12}")
+    print(
+        f"{'Mode':<24} {'Games':>7} {'WinRate':>9} {'AvgReward':>11} "
+        f"{'FoldWins':>10} {'FoldLosses':>11} {'FoldVsBet':>10} {'LargePotWR':>10} {'ShowdownW/L':>12}"
+    )
     for row in rows:
         showdown_record = f"{row['showdown_wins']}/{row['showdown_losses']}"
         print(
@@ -450,6 +484,9 @@ def print_table(rows):
             f"{row['win_rate']:>9.4f} "
             f"{row['avg_reward']:>11.4f} "
             f"{row['fold_wins']:>10} "
+            f"{row['fold_losses']:>11} "
+            f"{row['fold_rate_when_facing_bet']:>10.4f} "
+            f"{row['large_pot_win_rate']:>10.4f} "
             f"{showdown_record:>12}"
         )
 
@@ -478,6 +515,7 @@ def run_evaluation():
     ]
 
     print_table(baseline_rows)
+    print_action_diagnostics(baseline_rows)
 
     print(f"\nQ-table State Count: {len(agent.q_table)}")
 

@@ -24,7 +24,7 @@ class TexasHoldemEnv(gym.Env):
 
         # Observation Space:
         # [hole_1, hole_2, community_1, community_2, community_3, community_4, community_5,
-        #  round, current_player, pot, has_active_bet]
+        #  round, current_player, pot, has_active_bet, actions_this_round_count]
         # Cards encoded 0-19. -1 for empty/unknown community cards.
         # round: 0=preflop, 1=flop, 2=turn, 3=river, 4=showdown
         # current_player: 0 or 1
@@ -32,7 +32,7 @@ class TexasHoldemEnv(gym.Env):
         self.observation_space = spaces.Box(
             low=-1,
             high=100,
-            shape=(11,),
+            shape=(12,),
             dtype=np.int32
         )
 
@@ -122,7 +122,8 @@ class TexasHoldemEnv(gym.Env):
             round_enc,
             self.current_player,
             self.pot,
-            1 if self.has_active_bet else 0
+            1 if self.has_active_bet else 0,
+            min(len(self.actions_this_round), 2)
         ], dtype=np.int32)
         return obs
 

@@ -24,11 +24,21 @@ _SUIT_MAP = {0: "C", 1: "D", 2: "H", 3: "S"}
 
 
 class QLearningAgent:
-    def __init__(self, action_size, alpha=0.1, gamma=0.95, epsilon=0.2):
+    def __init__(
+        self,
+        action_size,
+        alpha=0.1,
+        gamma=0.95,
+        epsilon=0.2,
+        random_tie_break=False,
+        fold_margin=0.25,
+    ):
         self.action_size = action_size
         self.alpha = alpha
         self.gamma = gamma
         self.epsilon = epsilon
+        self.random_tie_break = random_tie_break
+        self.fold_margin = fold_margin
         self.q_table = {}
 
     def _decode_card(self, card_id):
@@ -190,6 +200,7 @@ class QLearningAgent:
         round_index = int(state[7])
         pot = int(state[9])
         has_active_bet = int(state[10])
+        actions_this_round_count = int(state[11]) if len(state) > 11 else 0
         opponent_profile = int(opponent_profile)
 
         made_hand_rank = self._made_hand_rank(hole_cards, community_cards)
@@ -208,6 +219,7 @@ class QLearningAgent:
             self._kicker_bucket(hole_cards),
             self._get_pot_bucket(pot),
             has_active_bet,
+            min(actions_this_round_count, 2),
             round_index,
             opponent_profile,
         )
@@ -228,7 +240,18 @@ class QLearningAgent:
             return random.choice(valid_actions)
 
         q_values = self.q_table[state_key]
-        return max(valid_actions, key=lambda action: q_values[action])
+
+        if 0 in valid_actions and 2 in valid_actions:
+            call_q = q_values[0]
+            fold_q = q_values[2]
+            if fold_q <= call_q + self.fold_margin:
+                valid_actions = [action for action in valid_actions if action != 2]
+
+        best_q = max(q_values[action] for action in valid_actions)
+        best_actions = [action for action in valid_actions if q_values[action] == best_q]
+        if self.random_tie_break:
+            return random.choice(best_actions)
+        return best_actions[0]
 
     def update(
         self,

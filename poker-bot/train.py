@@ -77,18 +77,18 @@ def shaping_reward(agent, state, action, valid_actions):
 
     reward = 0.0
 
+    top_pair_only = bool(top_pair and made_hand_rank == 1 and not two_pair_flag and not trips_flag and not overpair)
     strong_hand = (
         best_current_hand_rank >= 2
         or two_pair_flag
         or trips_flag
         or overpair
-        or (top_pair and made_hand_rank >= 1)
     )
     medium_hand = (
         not strong_hand
         and (
             best_current_hand_rank >= 1
-            or top_pair
+            or top_pair_only
             or made_hand_rank >= 2
             or flush_draw
             or straight_draw
@@ -105,27 +105,27 @@ def shaping_reward(agent, state, action, valid_actions):
                 reward += 0.003
         elif medium_hand:
             if action == 1:  # mixed value/semi-bluff
-                reward += 0.020
+                reward += 0.035
             elif action == 0:  # check less often
-                reward -= 0.003
+                reward -= 0.010
         elif strong_hand:
             if action == 1:  # value bet
-                reward += 0.075 if pot_bucket <= 1 else 0.090
+                reward += 0.120 if pot_bucket <= 1 else 0.150
             elif action == 0:  # slowplay less often
-                reward -= 0.030 if pot_bucket <= 1 else 0.040
+                reward -= 0.060 if pot_bucket <= 1 else 0.080
 
     # Facing bet: strongest shaping should be on bad weak calls in bigger pots.
     if has_active_bet == 1 and 2 in valid_actions:
         if weak_hand:
             if action == 0:  # call
                 reward -= 0.030 if pot_bucket <= 1 else 0.050
-            elif action == 2:  # fold
-                reward += 0.020 if pot_bucket <= 1 else 0.035
         elif medium_hand:
             if action == 0 and pot_bucket <= 1:  # call smaller pots more often
                 reward += 0.012
             elif action == 0 and pot_bucket >= 2:  # don't station big pots too much
-                reward -= 0.006
+                reward -= 0.025
+            elif action == 2 and pot_bucket >= 2:
+                reward += 0.012
             elif action == 2 and pot_bucket <= 1:
                 reward -= 0.008
         elif strong_hand:
@@ -144,6 +144,7 @@ def run_training():
         alpha=ALPHA,
         gamma=GAMMA,
         epsilon=EPSILON,
+        random_tie_break=True,
     )
 
     rewards = []

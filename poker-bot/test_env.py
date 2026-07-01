@@ -39,10 +39,10 @@ def test_action_space_has_3_actions():
     assert env.action_space.n == 3
 
 
-def test_observation_shape_is_11():
+def test_observation_shape_is_12():
     env = TexasHoldemEnv()
     obs, info = env.reset(seed=123)
-    assert obs.shape == (11,)
+    assert obs.shape == (12,)
 
 
 def test_get_valid_actions_no_active_bet():
