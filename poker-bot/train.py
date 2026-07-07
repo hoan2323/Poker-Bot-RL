@@ -13,12 +13,12 @@ from evaluate import (
 )
 
 
-EPISODES = 300000
-ALPHA = 0.10
+EPISODES = 500000
+ALPHA = 0.15
 GAMMA = 0.95
-EPSILON = 0.35
-EPSILON_DECAY = 0.999985
-MIN_EPSILON = 0.05
+EPSILON = 0.45
+EPSILON_DECAY = 0.99999
+MIN_EPSILON = 0.02
 LOG_INTERVAL = 10000
 
 
@@ -30,18 +30,18 @@ OPPONENT_POLICIES = {
 }
 
 OPPONENT_WEIGHTS = {
-    "heuristic": 0.40,
-    "call_station": 0.30,
-    "random": 0.20,
+    "heuristic": 0.50,
+    "call_station": 0.35,
     "always_bet": 0.10,
+    "random": 0.05,
 }
 
 
 def choose_training_opponent(episode):
+    """Sample opponents by configured weights to reduce overfitting to weak/random play."""
     names = list(OPPONENT_POLICIES.keys())
-    block_size = 100
-    idx = (episode // block_size) % len(names)
-    name = names[idx]
+    weights = [OPPONENT_WEIGHTS[name] for name in names]
+    name = random.choices(names, weights=weights, k=1)[0]
     return name, OPPONENT_POLICIES[name]
 
 
@@ -75,6 +75,7 @@ def shaping_reward(agent, state, action, valid_actions):
     overpair = state_key[8]
     pot_bucket = state_key[10]
     has_active_bet = state_key[11]
+    round_index = state_key[13]
 
     reward = 0.0
 
@@ -100,41 +101,49 @@ def shaping_reward(agent, state, action, valid_actions):
     if has_active_bet == 0 and 1 in valid_actions:
         if weak_hand:
             if action == 1:
-                reward -= 0.030
+                reward -= 0.080 if round_index >= 1 else 0.050
             elif action == 0:
-                reward += 0.005
+                reward += 0.010
 
         elif medium_hand:
             if action == 1:
-                reward += 0.020
+                reward += 0.080 if round_index >= 1 else 0.040
             elif action == 0:
-                reward -= 0.005
+                reward -= 0.030 if round_index >= 1 else 0.010
 
         elif strong_hand:
             if action == 1:
-                reward += 0.150
+                reward += 0.500
             elif action == 0:
-                reward -= 0.080
+                reward -= 0.300
+
+        if round_index >= 2 and strong_hand:
+            if action == 1:
+                reward += 0.500
+            elif action == 0:
+                reward -= 0.400
 
     # Facing bet
     if has_active_bet == 1 and 2 in valid_actions:
         if weak_hand:
             if action == 0:
-                reward -= 0.010 if pot_bucket <= 1 else 0.020
+                reward -= 0.040 if pot_bucket <= 1 else 0.120
+            elif action == 2 and pot_bucket >= 2:
+                reward += 0.020
 
         elif medium_hand:
             if action == 0 and pot_bucket <= 1:
-                reward += 0.010
+                reward += 0.005
             elif action == 0 and pot_bucket >= 2:
-                reward -= 0.020
+                reward -= 0.080
             elif action == 2 and pot_bucket <= 1:
                 reward -= 0.008
 
         elif strong_hand:
             if action == 0:
-                reward += 0.020 if pot_bucket <= 1 else 0.035
+                reward += 0.100 if pot_bucket <= 1 else 0.150
             elif action == 2:
-                reward -= 0.090 if pot_bucket <= 1 else 0.120
+                reward -= 0.250 if pot_bucket <= 1 else 0.350
 
     return reward
 

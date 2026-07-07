@@ -241,11 +241,109 @@ class QLearningAgent:
 
         q_values = self.q_table[state_key]
 
+        (
+            made_hand_rank,
+            best_current_hand_rank,
+            _pair_flag,
+            two_pair_flag,
+            trips_flag,
+            flush_draw,
+            straight_draw,
+            top_pair,
+            overpair,
+            _kicker_bucket,
+            pot_bucket,
+            has_active_bet,
+            _actions_this_round_count,
+            round_index,
+            profile_bucket,
+        ) = state_key
+
+        strong_hand = (
+            best_current_hand_rank >= 2
+            or two_pair_flag
+            or trips_flag
+            or overpair
+        )
+        top_pair_only = bool(
+            top_pair
+            and made_hand_rank == ONE_PAIR
+            and not two_pair_flag
+            and not trips_flag
+            and not overpair
+        )
+        medium_hand = (
+            not strong_hand
+            and (
+                best_current_hand_rank >= 1
+                or top_pair_only
+                or made_hand_rank >= TWO_PAIR
+                or flush_draw
+                or straight_draw
+            )
+        )
+        weak_hand = not strong_hand and not medium_hand
+        call_station_profile = profile_bucket == 1
+        aggressive_or_heuristic_profile = profile_bucket in (0, 2, 4)
+        made_pair_or_better = made_hand_rank >= ONE_PAIR
+        draw_only = (flush_draw or straight_draw) and not made_pair_or_better
+        monster_hand = (
+            best_current_hand_rank >= 2
+            or trips_flag
+            or (two_pair_flag and made_hand_rank >= TWO_PAIR)
+        )
+
         if 0 in valid_actions and 2 in valid_actions:
             call_q = q_values[0]
             fold_q = q_values[2]
+
+            if has_active_bet == 1:
+                # 1) NEVER fold monster/strong hands
+                if monster_hand:
+                    return 0
+                if strong_hand:
+                    return 0
+                # 2) Medium hands: almost never fold — only pure draws in very large pots
+                if medium_hand and draw_only and pot_bucket >= 3 and fold_q >= call_q + 0.20:
+                    return 2
+                if medium_hand:
+                    return 0
+                # 3) Weak hands fold EASIER
+                if weak_hand and pot_bucket >= 1 and fold_q >= call_q - 0.50:
+                    return 2
+                if weak_hand and round_index >= 1:
+                    return 2
+
             if fold_q <= call_q + self.fold_margin:
                 valid_actions = [action for action in valid_actions if action != 2]
+
+        if 0 in valid_actions and 1 in valid_actions:
+            if has_active_bet == 0:
+                # 3) Force betting with strong/monster hands (wide threshold)
+                if call_station_profile:
+                    if monster_hand:
+                        return 1
+                    if strong_hand and q_values[1] >= q_values[0] - 0.60:
+                        return 1
+                    if made_pair_or_better and not draw_only and q_values[1] >= q_values[0] - 0.30:
+                        return 1
+                    if weak_hand or draw_only:
+                        return 0
+
+                # vs heuristic/aggressive/unknown — bet aggressively
+                if monster_hand:
+                    return 1
+                if strong_hand and q_values[1] >= q_values[0] - 0.60:
+                    return 1
+                if medium_hand and q_values[1] >= q_values[0] - 0.30:
+                    return 1
+                if medium_hand and made_pair_or_better:
+                    return 1
+                # Weak hand bluffs — bet when Q suggests it's close
+                if weak_hand and q_values[1] >= q_values[0] - 0.05:
+                    return 1
+                if weak_hand and round_index <= 0 and q_values[1] >= q_values[0] - 0.15:
+                    return 1
 
         best_q = max(q_values[action] for action in valid_actions)
         best_actions = [action for action in valid_actions if q_values[action] == best_q]
