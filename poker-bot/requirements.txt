@@ -1,5 +1,0 @@
-gymnasium
-numpy
-pytest
-matplotlib
-streamlit

@@ -1,173 +1,105 @@
-import pytest
 import numpy as np
+import pytest
 
-from texas_holdenv import TexasHoldemEnv, SimplifiedTexasHoldemEnv, KuhnPokerEnv
-
-
-def test_imports_successfully():
-    env = TexasHoldemEnv()
-    assert env is not None
-    assert SimplifiedTexasHoldemEnv is TexasHoldemEnv
-    assert KuhnPokerEnv is TexasHoldemEnv
+from environment import ShortDeckPokerEnv, compare_hands, evaluate_hand
 
 
-def test_deck_has_20_unique_cards():
-    env = TexasHoldemEnv()
-    deck = env._create_deck()
-    assert len(deck) == 20
-    assert len(set(deck)) == 20
-    assert set(env.ranks) == {10, 11, 12, 13, 14}
-    assert set(env.suits) == {"C", "D", "H", "S"}
+def play_checks_to_showdown(env):
+    state = None
+    reward = 0
+    done = False
+    for _ in range(8):
+        state, reward, done, _ = env.step(0)
+        if done:
+            break
+    return state, reward, done
 
 
-def test_reset_deals_2_cards_to_each_player():
-    env = TexasHoldemEnv()
-    env.reset(seed=123)
-    assert len(env.player_hands[0]) == 2
-    assert len(env.player_hands[1]) == 2
+def test_reset_returns_player_zero_186_feature_state():
+    env = ShortDeckPokerEnv()
+    state = env.reset()
 
-
-def test_reset_hides_all_community_cards():
-    env = TexasHoldemEnv()
-    obs, info = env.reset(seed=123)
-    assert env.community_cards == []
-    assert list(obs[2:7]) == [-1, -1, -1, -1, -1]
-
-
-def test_action_space_has_3_actions():
-    env = TexasHoldemEnv()
-    assert env.action_space.n == 3
-
-
-def test_observation_shape_is_12():
-    env = TexasHoldemEnv()
-    obs, info = env.reset(seed=123)
-    assert obs.shape == (12,)
-
-
-def test_get_valid_actions_no_active_bet():
-    env = TexasHoldemEnv()
-    env.reset(seed=123)
+    assert state.shape == (186,)
+    assert state.dtype == np.float32
+    assert np.count_nonzero(state[:20]) == 2
+    assert np.count_nonzero(state[80:100]) == 0
+    assert env.pot == 2
+    assert env.round == 0
     assert env.get_valid_actions() == [0, 1]
 
 
-def test_get_valid_actions_active_bet():
-    env = TexasHoldemEnv()
-    env.reset(seed=123)
+def test_player_state_hides_opponent_hole_cards():
+    env = ShortDeckPokerEnv()
+    env.reset()
+
+    player_zero_state = env.get_state(0)
+    player_one_state = env.get_state(1)
+    assert set(np.flatnonzero(player_zero_state[:20])) == set(env.hands[0])
+    assert set(np.flatnonzero(player_one_state[:20])) == set(env.hands[1])
+    assert not set(env.hands[1]).issubset(set(np.flatnonzero(player_zero_state[:20])))
+
+
+def test_checking_advances_all_four_betting_rounds():
+    env = ShortDeckPokerEnv()
+    env.reset()
+
+    env.step(0)
+    _, reward, done, _ = env.step(0)
+    assert len(env.board) == 3
+    assert env.round == 1
+    assert reward == 0
+    assert not done
+
+    env.step(0)
+    env.step(0)
+    assert len(env.board) == 4
+    assert env.round == 2
+
+    env.step(0)
+    env.step(0)
+    assert len(env.board) == 5
+    assert env.round == 3
+
+    _, reward, done = play_checks_to_showdown(env)
+    assert done
+    assert env.round == 4
+    assert reward in (-env.pot, 0, env.pot)
+
+
+def test_raise_is_allowed_when_facing_a_bet():
+    env = ShortDeckPokerEnv()
+    env.reset()
+
     env.step(1)
-    assert env.get_valid_actions() == [0, 2]
-
-
-def test_fold_invalid_when_no_active_bet():
-    env = TexasHoldemEnv()
-    env.reset(seed=123)
-    with pytest.raises(ValueError):
-        env.step(2)
-
-
-def test_bet_invalid_when_active_bet_exists():
-    env = TexasHoldemEnv()
-    env.reset(seed=123)
+    assert env.get_valid_actions() == [0, 1, 2]
     env.step(1)
-    with pytest.raises(ValueError):
-        env.step(1)
-
-
-def test_check_check_preflop_reveals_3_flop_cards():
-    env = TexasHoldemEnv()
-    env.reset(seed=123)
-    env.step(0)
-    obs, reward, terminated, truncated, info = env.step(0)
-    assert env.round == "flop"
-    assert len(env.community_cards) == 3
-    assert list(obs[2:5]) != [-1, -1, -1]
-    assert not terminated
-
-
-def test_check_check_flop_reveals_1_turn_card():
-    env = TexasHoldemEnv()
-    env.reset(seed=123)
-    env.step(0)
-    env.step(0)
-    env.step(0)
-    obs, reward, terminated, truncated, info = env.step(0)
-    assert env.round == "turn"
-    assert len(env.community_cards) == 4
-    assert obs[5] != -1
-    assert not terminated
-
-
-def test_check_check_turn_reveals_1_river_card():
-    env = TexasHoldemEnv()
-    env.reset(seed=123)
-    env.step(0)
-    env.step(0)
-    env.step(0)
-    env.step(0)
-    env.step(0)
-    obs, reward, terminated, truncated, info = env.step(0)
-    assert env.round == "river"
-    assert len(env.community_cards) == 5
-    assert obs[6] != -1
-    assert not terminated
-
-
-def test_check_check_river_triggers_showdown():
-    env = TexasHoldemEnv()
-    env.reset(seed=123)
-    for _ in range(8):
-        obs, reward, terminated, truncated, info = env.step(0)
-    assert env.round == "showdown"
-    assert env.done is True
-    assert terminated is True
-    assert reward in [env.pot, -env.pot, 0]
-    assert info["end_reason"] == "showdown"
-
-
-def test_bet_call_preflop_reveals_flop():
-    env = TexasHoldemEnv()
-    env.reset(seed=123)
-    env.step(1)
-    obs, reward, terminated, truncated, info = env.step(0)
-    assert env.round == "flop"
-    assert len(env.community_cards) == 3
+    assert env.bet_size == 2
+    assert env.current_player == 0
     assert env.pot == 4
-    assert not terminated
+
+    _, reward, done, _ = env.step(0)
+    assert env.round == 1
+    assert env.pot == 5
+    assert reward == 0
+    assert not done
 
 
-def test_fold_after_bet_ends_game():
-    env = TexasHoldemEnv()
-    env.reset(seed=123)
+def test_fold_awards_pot_to_the_other_player():
+    env = ShortDeckPokerEnv()
+    env.reset()
     env.step(1)
-    obs, reward, terminated, truncated, info = env.step(2)
-    assert env.done is True
-    assert terminated is True
+
+    _, reward, done, info = env.step(2)
+    assert done
     assert info["winner"] == 0
-    assert info["end_reason"] == "fold"
     assert reward == env.pot
-
-
-def test_reward_is_plus_pot_minus_pot_or_zero():
-    env = TexasHoldemEnv()
-    env.reset(seed=123)
-    for _ in range(8):
-        obs, reward, terminated, truncated, info = env.step(0)
-    assert reward in [env.pot, -env.pot, 0]
-
-
-def test_reset_seed_is_reproducible():
-    env1 = TexasHoldemEnv()
-    env2 = TexasHoldemEnv()
-    obs1, info1 = env1.reset(seed=123)
-    obs2, info2 = env2.reset(seed=123)
-    assert np.array_equal(obs1, obs2)
-    assert env1.player_hands == env2.player_hands
-
-
-def test_step_after_game_done_raises_runtime_error():
-    env = TexasHoldemEnv()
-    env.reset(seed=123)
-    env.step(1)
-    env.step(2)
     with pytest.raises(RuntimeError):
         env.step(0)
+
+
+def test_hand_evaluation_is_available_from_environment_module():
+    four_of_a_kind = [0, 1, 2, 3, 4]
+    one_pair = [4, 5, 8, 12, 17]
+
+    assert evaluate_hand(four_of_a_kind)[0] > evaluate_hand(one_pair)[0]
+    assert compare_hands(four_of_a_kind, one_pair) == 1

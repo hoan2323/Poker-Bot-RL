@@ -1,9 +1,12 @@
 import random
+from pathlib import Path
 import numpy as np
 
-from texas_holdenv import TexasHoldemEnv
+from environment import ShortDeckPokerEnv
+from game_results import resolve_terminal_result
 from q_learning_agent import QLearningAgent
 from opponent_model import OpponentModel
+from training_artifacts import write_training_metadata
 from evaluate import (
     always_bet_policy,
     call_station_policy,
@@ -149,7 +152,7 @@ def shaping_reward(agent, state, action, valid_actions):
 
 
 def run_training():
-    env = TexasHoldemEnv()
+    env = ShortDeckPokerEnv()
     agent = QLearningAgent(
         action_size=3,
         alpha=ALPHA,
@@ -175,14 +178,13 @@ def run_training():
         opponent_counts[opponent_name] += 1
 
         starting_player = episode % 2
-        state, info = env.reset(options={"starting_player": starting_player})
+        state = env.reset(starting_player=starting_player)
         opponent_model = opponent_models[opponent_name]
-        terminated = False
-        truncated = False
+        done = False
         total_reward = 0
         pending_transition = None
 
-        while not terminated and not truncated:
+        while not done:
             acting_player = env.current_player
             valid_actions = env.get_valid_actions()
             policy_state = observation_for_player(env, acting_player)
@@ -214,7 +216,8 @@ def run_training():
             else:
                 action = opponent_policy(policy_state, valid_actions)
 
-            next_state, reward, terminated, truncated, info = env.step(action)
+            next_state, step_reward, done, info = env.step(action)
+            reward, _, _ = resolve_terminal_result(env, step_reward)
 
             if acting_player == 1:
                 opponent_model.record_action(valid_actions, action)
@@ -233,7 +236,7 @@ def run_training():
             elif pending_transition is not None:
                 pending_transition["reward"] += reward
 
-            if (terminated or truncated) and pending_transition is not None:
+            if done and pending_transition is not None:
                 next_policy_state = observation_for_player(env, 0)
                 agent.update(
                     pending_transition["state"],
@@ -284,11 +287,13 @@ def run_training():
                 f"Opponents: {opponent_counts}"
             )
 
-    agent.save("q_table.npy")
-    np.save("rewards.npy", np.array(rewards, dtype=np.float64))
-    np.save("win_rates.npy", np.array(win_rates, dtype=np.float64))
-    np.save("draw_rates.npy", np.array(draw_rates, dtype=np.float64))
-    np.save("loss_rates.npy", np.array(loss_rates, dtype=np.float64))
+    output_dir = Path(__file__).resolve().parent
+    agent.save(output_dir / "q_table.npy")
+    np.save(output_dir / "rewards.npy", np.array(rewards, dtype=np.float64))
+    np.save(output_dir / "win_rates.npy", np.array(win_rates, dtype=np.float64))
+    np.save(output_dir / "draw_rates.npy", np.array(draw_rates, dtype=np.float64))
+    np.save(output_dir / "loss_rates.npy", np.array(loss_rates, dtype=np.float64))
+    write_training_metadata(output_dir, EPISODES, len(agent.q_table))
 
     return agent, rewards, win_rates, draw_rates, loss_rates
 

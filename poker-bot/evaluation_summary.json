@@ -1,0 +1,331 @@
+{
+  "format_version": 2,
+  "environment": "ShortDeckPokerEnv",
+  "matchups": [
+    {
+      "games": 5000,
+      "wins": 3926,
+      "losses": 642,
+      "draws": 432,
+      "win_rate": 0.7852,
+      "avg_reward": 3.8528,
+      "fold_wins": 3309,
+      "fold_losses": 4,
+      "fold_ends": 3313,
+      "showdown_ends": 1687,
+      "showdown_wins": 617,
+      "showdown_losses": 638,
+      "showdown_draws": 432,
+      "avg_pot": 7.3588,
+      "avg_win_pot": 6.580234335201222,
+      "avg_loss_pot": 10.233644859813085,
+      "fold_rate_when_facing_bet": 0.0005551700208188758,
+      "showdown_only_win_rate": 0.3657379964433906,
+      "showdown_decisive_win_rate": 0.49163346613545816,
+      "win_rate_excluding_fold": 0.3657379964433906,
+      "large_pot_games": 4177,
+      "large_pot_wins": 3105,
+      "large_pot_losses": 640,
+      "large_pot_win_rate": 0.7433564759396696,
+      "action_diagnostics": {
+        "weak": {
+          "bet_rate": 0.12631578947368421,
+          "call_rate": 0.34699907663896584,
+          "fold_rate": 0.000554016620498615,
+          "avg_reward": 1.2064534142373446,
+          "large_pot_loss_count": 2,
+          "actions": 5415
+        },
+        "medium": {
+          "bet_rate": 0.6835891381345927,
+          "call_rate": 0.31621408894136166,
+          "fold_rate": 0.0001967729240456513,
+          "avg_reward": 1.1167675518324898,
+          "large_pot_loss_count": 0,
+          "actions": 5082
+        },
+        "strong": {
+          "bet_rate": 0.6420135305584223,
+          "call_rate": 0.3579864694415778,
+          "fold_rate": 0.0,
+          "avg_reward": 0.8090404842898838,
+          "large_pot_loss_count": 638,
+          "actions": 8721
+        }
+      },
+      "by_position": {
+        "0": {
+          "games": 2500,
+          "wins": 1943,
+          "win_rate": 0.7772
+        },
+        "1": {
+          "games": 2500,
+          "wins": 1983,
+          "win_rate": 0.7932
+        }
+      },
+      "label": "q_vs_random"
+    },
+    {
+      "games": 5000,
+      "wins": 1874,
+      "losses": 1929,
+      "draws": 1197,
+      "win_rate": 0.3748,
+      "avg_reward": -0.06,
+      "fold_wins": 0,
+      "fold_losses": 0,
+      "fold_ends": 0,
+      "showdown_ends": 5000,
+      "showdown_wins": 1874,
+      "showdown_losses": 1929,
+      "showdown_draws": 1197,
+      "avg_pot": 8.1164,
+      "avg_win_pot": 8.169690501600854,
+      "avg_loss_pot": 8.09227579056506,
+      "fold_rate_when_facing_bet": 0.0,
+      "showdown_only_win_rate": 0.3748,
+      "showdown_decisive_win_rate": 0.49276886668419667,
+      "win_rate_excluding_fold": 0.3748,
+      "large_pot_games": 5000,
+      "large_pot_wins": 1874,
+      "large_pot_losses": 1929,
+      "large_pot_win_rate": 0.3748,
+      "action_diagnostics": {
+        "weak": {
+          "bet_rate": 0.0,
+          "call_rate": 0.0,
+          "fold_rate": 0.0,
+          "avg_reward": -0.05762473647224174,
+          "large_pot_loss_count": 0,
+          "actions": 4269
+        },
+        "medium": {
+          "bet_rate": 0.9031903190319032,
+          "call_rate": 0.0,
+          "fold_rate": 0.0,
+          "avg_reward": -0.18272827282728274,
+          "large_pot_loss_count": 0,
+          "actions": 4545
+        },
+        "strong": {
+          "bet_rate": 1.0,
+          "call_rate": 0.0,
+          "fold_rate": 0.0,
+          "avg_reward": 0.06941712855354908,
+          "large_pot_loss_count": 1929,
+          "actions": 11186
+        }
+      },
+      "by_position": {
+        "0": {
+          "games": 2500,
+          "wins": 969,
+          "win_rate": 0.3876
+        },
+        "1": {
+          "games": 2500,
+          "wins": 905,
+          "win_rate": 0.362
+        }
+      },
+      "label": "q_vs_call_station"
+    },
+    {
+      "games": 5000,
+      "wins": 1973,
+      "losses": 1822,
+      "draws": 1205,
+      "win_rate": 0.3946,
+      "avg_reward": 0.1434,
+      "fold_wins": 83,
+      "fold_losses": 0,
+      "fold_ends": 83,
+      "showdown_ends": 4917,
+      "showdown_wins": 1890,
+      "showdown_losses": 1822,
+      "showdown_draws": 1205,
+      "avg_pot": 8.5436,
+      "avg_win_pot": 8.40293968575773,
+      "avg_loss_pot": 8.705817782656421,
+      "fold_rate_when_facing_bet": 0.0,
+      "showdown_only_win_rate": 0.3843807199511898,
+      "showdown_decisive_win_rate": 0.5091594827586207,
+      "win_rate_excluding_fold": 0.3843807199511898,
+      "large_pot_games": 4917,
+      "large_pot_wins": 1890,
+      "large_pot_losses": 1822,
+      "large_pot_win_rate": 0.3843807199511898,
+      "action_diagnostics": {
+        "weak": {
+          "bet_rate": 0.1735930735930736,
+          "call_rate": 0.0,
+          "fold_rate": 0.0,
+          "avg_reward": 0.007792207792207784,
+          "large_pot_loss_count": 0,
+          "actions": 4620
+        },
+        "medium": {
+          "bet_rate": 0.5088378258948298,
+          "call_rate": 0.40256296950950066,
+          "fold_rate": 0.0,
+          "avg_reward": -0.13073353954927092,
+          "large_pot_loss_count": 0,
+          "actions": 4526
+        },
+        "strong": {
+          "bet_rate": 0.5001812907904278,
+          "call_rate": 0.49981870920957217,
+          "fold_rate": 0.0,
+          "avg_reward": 0.11536439448875989,
+          "large_pot_loss_count": 1822,
+          "actions": 11032
+        }
+      },
+      "by_position": {
+        "0": {
+          "games": 2500,
+          "wins": 1012,
+          "win_rate": 0.4048
+        },
+        "1": {
+          "games": 2500,
+          "wins": 961,
+          "win_rate": 0.3844
+        }
+      },
+      "label": "q_vs_heuristic"
+    },
+    {
+      "games": 5000,
+      "wins": 2133,
+      "losses": 1748,
+      "draws": 1119,
+      "win_rate": 0.4266,
+      "avg_reward": 0.1246,
+      "fold_wins": 433,
+      "fold_losses": 0,
+      "fold_ends": 433,
+      "showdown_ends": 4567,
+      "showdown_wins": 1700,
+      "showdown_losses": 1748,
+      "showdown_draws": 1119,
+      "avg_pot": 12.0582,
+      "avg_win_pot": 10.907641819034223,
+      "avg_loss_pot": 12.95366132723112,
+      "fold_rate_when_facing_bet": 0.0,
+      "showdown_only_win_rate": 0.37223560324063937,
+      "showdown_decisive_win_rate": 0.49303944315545245,
+      "win_rate_excluding_fold": 0.37223560324063937,
+      "large_pot_games": 4567,
+      "large_pot_wins": 1700,
+      "large_pot_losses": 1748,
+      "large_pot_win_rate": 0.37223560324063937,
+      "action_diagnostics": {
+        "weak": {
+          "bet_rate": 1.0,
+          "call_rate": 0.0,
+          "fold_rate": 0.0,
+          "avg_reward": 0.14945394112060778,
+          "large_pot_loss_count": 0,
+          "actions": 4212
+        },
+        "medium": {
+          "bet_rate": 1.0,
+          "call_rate": 0.0,
+          "fold_rate": 0.0,
+          "avg_reward": -0.27732530689329554,
+          "large_pot_loss_count": 0,
+          "actions": 4236
+        },
+        "strong": {
+          "bet_rate": 1.0,
+          "call_rate": 0.0,
+          "fold_rate": 0.0,
+          "avg_reward": 0.11394226080171657,
+          "large_pot_loss_count": 1748,
+          "actions": 10253
+        }
+      },
+      "by_position": {
+        "0": {
+          "games": 2500,
+          "wins": 1065,
+          "win_rate": 0.426
+        },
+        "1": {
+          "games": 2500,
+          "wins": 1068,
+          "win_rate": 0.4272
+        }
+      },
+      "label": "always_bet_vs_heuristic"
+    },
+    {
+      "games": 5000,
+      "wins": 2651,
+      "losses": 1460,
+      "draws": 889,
+      "win_rate": 0.5302,
+      "avg_reward": 1.2916,
+      "fold_wins": 1219,
+      "fold_losses": 40,
+      "fold_ends": 1259,
+      "showdown_ends": 3741,
+      "showdown_wins": 1432,
+      "showdown_losses": 1420,
+      "showdown_draws": 889,
+      "avg_pot": 8.0876,
+      "avg_win_pot": 7.344775556393814,
+      "avg_loss_pot": 8.913013698630136,
+      "fold_rate_when_facing_bet": 0.006765899864682003,
+      "showdown_only_win_rate": 0.38278535151029136,
+      "showdown_decisive_win_rate": 0.5021037868162693,
+      "win_rate_excluding_fold": 0.38278535151029136,
+      "large_pot_games": 4541,
+      "large_pot_wins": 2192,
+      "large_pot_losses": 1460,
+      "large_pot_win_rate": 0.48271305879762166,
+      "action_diagnostics": {
+        "weak": {
+          "bet_rate": 0.13486910994764398,
+          "call_rate": 0.1243979057591623,
+          "fold_rate": 0.007539267015706806,
+          "avg_reward": 0.36498229867863385,
+          "large_pot_loss_count": 36,
+          "actions": 4775
+        },
+        "medium": {
+          "bet_rate": 0.7001696352841391,
+          "call_rate": 0.2684478371501272,
+          "fold_rate": 0.0008481764206955047,
+          "avg_reward": 0.25629569045599593,
+          "large_pot_loss_count": 4,
+          "actions": 4716
+        },
+        "strong": {
+          "bet_rate": 0.659411878506481,
+          "call_rate": 0.3405881214935191,
+          "fold_rate": 0.0,
+          "avg_reward": 0.3391873716017651,
+          "large_pot_loss_count": 1420,
+          "actions": 10338
+        }
+      },
+      "by_position": {
+        "0": {
+          "games": 2500,
+          "wins": 1291,
+          "win_rate": 0.5164
+        },
+        "1": {
+          "games": 2500,
+          "wins": 1360,
+          "win_rate": 0.544
+        }
+      },
+      "label": "mixed_opponent_eval"
+    }
+  ]
+}

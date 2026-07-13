@@ -1,0 +1,8 @@
+{
+  "format_version": 2,
+  "environment": "ShortDeckPokerEnv",
+  "terminal_result_adapter": "game_results.resolve_terminal_result",
+  "episodes": 500000,
+  "q_table_states": 2004,
+  "created_at_utc": "2026-07-13T10:10:13.170145+00:00"
+}

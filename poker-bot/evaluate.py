@@ -1,17 +1,24 @@
+import json
 import random
 from collections import defaultdict
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import List
 
 import numpy as np
 
-from texas_holdenv import TexasHoldemEnv
+from environment import ShortDeckPokerEnv
+from game_results import normalized_step_info, resolve_terminal_result
 from q_learning_agent import QLearningAgent
 from opponent_model import OpponentModel
+from training_artifacts import require_current_training_metadata
 
 
 EVAL_GAMES = 5000
 RANKS = [10, 11, 12, 13, 14]
+BASE_DIR = Path(__file__).resolve().parent
+Q_TABLE_PATH = BASE_DIR / "q_table.npy"
+EVALUATION_REPORT_PATH = BASE_DIR / "evaluation_summary.json"
 
 
 def decode_card(card_id: int):
@@ -25,20 +32,15 @@ def decode_card(card_id: int):
 
 
 def observation_for_player(env, player):
-    obs = env._get_obs().copy()
-    obs[0] = env._card_to_id(env.player_hands[player][0])
-    obs[1] = env._card_to_id(env.player_hands[player][1])
-    obs[8] = env.current_player
-    actions_this_round_count = min(len(env.actions_this_round), 2)
-    return np.append(obs, actions_this_round_count).astype(np.int32)
+    return env.get_state(player)
 
 
 def visible_board_cards(state):
-    return [int(card) for card in state[2:7] if int(card) != -1]
+    return np.flatnonzero(np.asarray(state)[80:100] > 0.5).astype(int).tolist()
 
 
 def hole_cards(state):
-    return [int(state[0]), int(state[1])]
+    return np.flatnonzero(np.asarray(state)[:20] > 0.5).astype(int).tolist()
 
 
 def visible_ranks(state):
@@ -268,18 +270,18 @@ class EpisodeResult:
 
 
 def run_episode(env, policy0, policy1, starting_player=0, opponent_model=None):
-    state, info = env.reset(options={"starting_player": starting_player})
-    terminated = False
-    truncated = False
+    state = env.reset(starting_player=starting_player)
+    done = False
     total_reward = 0
-    final_info = info
+    final_info = env._get_info()
     folds_when_facing_bet = 0
     faced_bet_count = 0
     action_diagnostics = init_action_diagnostics()
+    agent_action_strengths = []
     if opponent_model is None:
         opponent_model = OpponentModel()
 
-    while not terminated and not truncated:
+    while not done:
         acting_player = env.current_player
         valid_actions = env.get_valid_actions()
         policy_state = observation_for_player(env, acting_player)
@@ -295,6 +297,7 @@ def run_episode(env, policy0, policy1, starting_player=0, opponent_model=None):
 
         if acting_player == 0:
             strength = hand_strength_bucket(policy_state)
+            agent_action_strengths.append(strength)
             action_diagnostics[strength]["actions"] += 1
             if action == 1:
                 action_diagnostics[strength]["bet"] += 1
@@ -308,7 +311,8 @@ def run_episode(env, policy0, policy1, starting_player=0, opponent_model=None):
             if action == 2:
                 folds_when_facing_bet += 1
 
-        next_state, reward, terminated, truncated, info = env.step(action)
+        next_state, step_reward, done, info = env.step(action)
+        reward, info = normalized_step_info(env, info, step_reward)
         if acting_player == 1:
             opponent_model.record_action(valid_actions, action)
         state = next_state
@@ -316,20 +320,24 @@ def run_episode(env, policy0, policy1, starting_player=0, opponent_model=None):
         final_info = info
 
     final_pot = final_info["pot"]
+    terminal_reward, winner, end_reason = resolve_terminal_result(env)
+    total_reward = terminal_reward if done else total_reward
 
-    for strength_data in action_diagnostics.values():
-        strength_data["reward_sum"] += total_reward
+    if agent_action_strengths:
+        reward_share = total_reward / len(agent_action_strengths)
+        for strength in agent_action_strengths:
+            action_diagnostics[strength]["reward_sum"] += reward_share
         if final_pot >= 5 and total_reward < 0:
-            strength_data["large_pot_loss"] += 1
+            action_diagnostics[agent_action_strengths[-1]]["large_pot_loss"] += 1
 
     return EpisodeResult(
-        winner=final_info["winner"],
-        end_reason=final_info["end_reason"],
+        winner=winner,
+        end_reason=end_reason,
         reward=total_reward,
         pot=final_pot,
         starting_player=starting_player,
-        fold_ending=final_info["end_reason"] == "fold",
-        showdown_ending=final_info["end_reason"] == "showdown",
+        fold_ending=end_reason == "fold",
+        showdown_ending=end_reason == "showdown",
         folds_when_facing_bet=folds_when_facing_bet,
         faced_bet_count=faced_bet_count,
         large_pot_game=final_pot >= 5,
@@ -360,6 +368,8 @@ def summarize_results(results):
 
     showdown_only_games = showdown_ends
     showdown_only_win_rate = showdown_wins / showdown_only_games if showdown_only_games else 0.0
+    decisive_showdowns = showdown_wins + showdown_losses
+    showdown_decisive_win_rate = showdown_wins / decisive_showdowns if decisive_showdowns else 0.0
     non_fold_games = len(results) - fold_ends
     win_rate_excluding_fold = showdown_wins / non_fold_games if non_fold_games else 0.0
     total_faced_bet = sum(r.faced_bet_count for r in results)
@@ -412,6 +422,8 @@ def summarize_results(results):
         "avg_reward": avg_reward,
         "fold_wins": fold_wins,
         "fold_losses": fold_losses,
+        "fold_ends": fold_ends,
+        "showdown_ends": showdown_ends,
         "showdown_wins": showdown_wins,
         "showdown_losses": showdown_losses,
         "showdown_draws": showdown_draws,
@@ -420,6 +432,7 @@ def summarize_results(results):
         "avg_loss_pot": avg_loss_pot,
         "fold_rate_when_facing_bet": fold_rate_when_facing_bet,
         "showdown_only_win_rate": showdown_only_win_rate,
+        "showdown_decisive_win_rate": showdown_decisive_win_rate,
         "win_rate_excluding_fold": win_rate_excluding_fold,
         "large_pot_games": large_pot_games,
         "large_pot_wins": large_pot_wins,
@@ -474,10 +487,10 @@ def print_table(rows):
     print()
     print(
         f"{'Mode':<24} {'Games':>7} {'WinRate':>9} {'AvgReward':>11} "
-        f"{'FoldWins':>10} {'FoldLosses':>11} {'FoldVsBet':>10} {'LargePotWR':>10} {'ShowdownW/L':>12}"
+        f"{'FoldWins':>10} {'FoldLosses':>11} {'FoldVsBet':>10} {'LargePotWR':>10} {'Showdown W/L/D':>15}"
     )
     for row in rows:
-        showdown_record = f"{row['showdown_wins']}/{row['showdown_losses']}"
+        showdown_record = f"{row['showdown_wins']}/{row['showdown_losses']}/{row['showdown_draws']}"
         print(
             f"{row['label']:<24} "
             f"{row['games']:>7} "
@@ -487,15 +500,31 @@ def print_table(rows):
             f"{row['fold_losses']:>11} "
             f"{row['fold_rate_when_facing_bet']:>10.4f} "
             f"{row['large_pot_win_rate']:>10.4f} "
-            f"{showdown_record:>12}"
+            f"{showdown_record:>15}"
         )
 
 
-def run_evaluation():
-    env = TexasHoldemEnv()
+def save_evaluation_report(rows, path=EVALUATION_REPORT_PATH):
+    report = {
+        "format_version": 2,
+        "environment": "ShortDeckPokerEnv",
+        "matchups": rows,
+    }
+    Path(path).write_text(json.dumps(report, indent=2), encoding="utf-8")
+    return report
+
+
+def load_trained_agent(q_table_path=Q_TABLE_PATH):
+    require_current_training_metadata(BASE_DIR)
     agent = QLearningAgent(action_size=3, epsilon=0.0)
-    agent.load("q_table.npy")
+    agent.load(q_table_path)
     agent.epsilon = 0.0
+    return agent
+
+
+def run_evaluation():
+    env = ShortDeckPokerEnv()
+    agent = load_trained_agent()
 
     policies = {
         "random": random_policy,
@@ -516,6 +545,7 @@ def run_evaluation():
 
     print_table(baseline_rows)
     print_action_diagnostics(baseline_rows)
+    save_evaluation_report(baseline_rows)
 
     print(f"\nQ-table State Count: {len(agent.q_table)}")
 

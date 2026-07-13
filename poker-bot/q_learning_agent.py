@@ -1,10 +1,9 @@
 import random
 from collections import Counter
-from itertools import combinations
 
 import numpy as np
 
-from hand_evaluator import (
+from environment import (
     HIGH_CARD,
     ONE_PAIR,
     TWO_PAIR,
@@ -14,8 +13,7 @@ from hand_evaluator import (
     FULL_HOUSE,
     FOUR_OF_A_KIND,
     STRAIGHT_FLUSH,
-    evaluate_best_hand,
-    evaluate_five_card_hand,
+    evaluate_hand,
 )
 
 
@@ -94,15 +92,7 @@ class QLearningAgent:
                 return ONE_PAIR
             return HIGH_CARD
 
-        if len(known_cards) == 7:
-            return evaluate_best_hand(known_cards)[0]
-
-        best = None
-        for combo in combinations(known_cards, 5):
-            score = evaluate_five_card_hand(list(combo))
-            if best is None or score > best:
-                best = score
-        return best[0] if best is not None else HIGH_CARD
+        return evaluate_hand(hole_cards + community_cards)[0]
 
     def _best_current_hand_rank_bucket(self, made_hand_rank):
         """Compact rank bucket for current best hand."""
@@ -195,12 +185,17 @@ class QLearningAgent:
         return 3
 
     def get_state_key(self, state, opponent_profile=0):
-        hole_cards = [int(state[0]), int(state[1])]
-        community_cards = [int(card) for card in state[2:7]]
-        round_index = int(state[7])
-        pot = int(state[9])
-        has_active_bet = int(state[10])
-        actions_this_round_count = int(state[11]) if len(state) > 11 else 0
+        """Compress the 186-feature ShortDeckPokerEnv observation for Q-learning."""
+        state = np.asarray(state)
+        if state.shape[0] != 186:
+            raise ValueError("Expected a 186-feature state from ShortDeckPokerEnv.")
+
+        hole_cards = np.flatnonzero(state[:20] > 0.5).astype(int).tolist()
+        community_cards = np.flatnonzero(state[80:100] > 0.5).astype(int).tolist()
+        round_index = int(round(float(state[181]) * 4))
+        pot = int(round(float(state[180]) * 20))
+        has_active_bet = int(state[183] > 0.5)
+        actions_this_round_count = 0
         opponent_profile = int(opponent_profile)
 
         made_hand_rank = self._made_hand_rank(hole_cards, community_cards)

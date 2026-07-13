@@ -7,27 +7,33 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 try:
-    from texas_holdenv import TexasHoldemEnv
+    from environment import ShortDeckPokerEnv
     from q_learning_agent import QLearningAgent
     from evaluate import (
         call_station_policy,
         evaluate_matchup,
         heuristic_policy,
+        load_trained_agent,
         mixed_opponent_policy,
         observation_for_player,
         q_policy,
         random_policy,
     )
+    from game_results import normalized_step_info
+    from training_artifacts import require_current_training_metadata
 except Exception as exc:
-    TexasHoldemEnv = None
+    ShortDeckPokerEnv = None
     QLearningAgent = None
     call_station_policy = None
     evaluate_matchup = None
     heuristic_policy = None
+    load_trained_agent = None
     mixed_opponent_policy = None
     observation_for_player = None
     q_policy = None
     random_policy = None
+    normalized_step_info = None
+    require_current_training_metadata = None
     IMPORT_ERROR = exc
 else:
     IMPORT_ERROR = None
@@ -44,7 +50,7 @@ TRAINING_FILES = {
 
 ACTION_NAMES = {
     0: {"idle": "Check", "active": "Call"},
-    1: {"idle": "Bet", "active": "Bet"},
+    1: {"idle": "Bet", "active": "Raise"},
     2: {"idle": "Fold", "active": "Fold"},
 }
 
@@ -55,6 +61,11 @@ def format_card(card: Any) -> str:
 
     if isinstance(card, str):
         return card
+
+    if isinstance(card, (int, np.integer)) and 0 <= int(card) < 20:
+        ranks = ["10", "J", "Q", "K", "A"]
+        suits = ["\u2663", "\u2666", "\u2665", "\u2660"]
+        return f"{ranks[int(card) // 4]}{suits[int(card) % 4]}"
 
     if not isinstance(card, tuple) or len(card) < 2:
         return str(card)
@@ -83,16 +94,8 @@ def format_cards(cards: Iterable[Any]) -> str:
 
 
 def get_env_snapshot(env: Any) -> Dict[str, Any]:
-    player_hands = getattr(env, "player_hands", {0: [], 1: []})
-    if isinstance(player_hands, list):
-        normalized_hands = {0: player_hands[0], 1: player_hands[1]}
-    else:
-        normalized_hands = {
-            0: player_hands.get(0, []),
-            1: player_hands.get(1, []),
-        }
-
-    community_cards = list(getattr(env, "community_cards", []))
+    normalized_hands = dict(getattr(env, "hands", {0: [], 1: []}))
+    community_cards = list(getattr(env, "board", []))
     valid_actions: List[int] = []
     if not getattr(env, "done", False) and hasattr(env, "get_valid_actions"):
         try:
@@ -104,9 +107,9 @@ def get_env_snapshot(env: Any) -> Dict[str, Any]:
         "phase": getattr(env, "round", getattr(env, "phase", "unknown")),
         "pot": getattr(env, "pot", "-"),
         "current_player": getattr(env, "current_player", "-"),
-        "has_active_bet": bool(getattr(env, "has_active_bet", False)),
-        "bettor": getattr(env, "bettor", None),
-        "current_bet": getattr(env, "current_bet", getattr(env, "bet", None)),
+        "has_active_bet": bool(getattr(env, "bet_size", 0)),
+        "bettor": None,
+        "current_bet": getattr(env, "bet_size", 0),
         "stacks": getattr(env, "stacks", getattr(env, "chips", None)),
         "player_hands": normalized_hands,
         "community_cards": community_cards,
@@ -123,6 +126,8 @@ def _q_table_status() -> Dict[str, Any]:
         data = np.load(Q_TABLE_PATH, allow_pickle=True)
         table = data.item() if getattr(data, "shape", None) == () else data
         states = len(table) if hasattr(table, "__len__") else None
+        if require_current_training_metadata is not None:
+            require_current_training_metadata(BASE_DIR)
         return {"exists": True, "states": states, "error": None}
     except Exception as exc:
         return {"exists": True, "states": None, "error": str(exc)}
@@ -142,31 +147,23 @@ def _load_agent() -> Any:
     if QLearningAgent is None:
         return None
 
-    action_size = 3
-    try:
-        env = TexasHoldemEnv() if TexasHoldemEnv is not None else None
-        action_size = int(getattr(getattr(env, "action_space", None), "n", 3))
-    except Exception:
-        action_size = 3
-
-    agent = QLearningAgent(action_size=action_size, epsilon=0.0)
     if Q_TABLE_PATH.exists():
         try:
-            agent.load(Q_TABLE_PATH)
-            agent.epsilon = 0.0
+            agent = load_trained_agent(Q_TABLE_PATH)
             st.session_state.q_table_loaded = True
             st.session_state.q_table_error = None
+            return agent
         except Exception as exc:
             st.session_state.q_table_loaded = False
             st.session_state.q_table_error = str(exc)
     else:
         st.session_state.q_table_loaded = False
         st.session_state.q_table_error = "q_table.npy not found"
-    return agent
+    return QLearningAgent(action_size=3, epsilon=0.0)
 
 
 def _action_label(action: int, env: Any) -> str:
-    state = "active" if bool(getattr(env, "has_active_bet", False)) else "idle"
+    state = "active" if bool(getattr(env, "bet_size", 0)) else "idle"
     return ACTION_NAMES.get(action, {"idle": str(action), "active": str(action)}).get(state, str(action))
 
 
@@ -186,8 +183,9 @@ def init_game() -> None:
         return
 
     try:
-        env = TexasHoldemEnv()
-        state, info = env.reset(options={"starting_player": 0})
+        env = ShortDeckPokerEnv()
+        state = env.reset(starting_player=0)
+        info = env._get_info()
         st.session_state.env = env
         st.session_state.agent = _load_agent()
         st.session_state.game_log = ["New hand started."]
@@ -214,11 +212,12 @@ def _apply_step(action: int, actor_label: str) -> None:
 
     try:
         action_text = _action_label(action, env)
-        next_state, reward, terminated, truncated, info = env.step(action)
+        next_state, step_reward, done, info = env.step(action)
+        reward, info = normalized_step_info(env, info, step_reward)
         st.session_state.last_state = next_state
         st.session_state.last_reward = reward
         st.session_state.last_info = info
-        st.session_state.done = bool(terminated or truncated or getattr(env, "done", False))
+        st.session_state.done = bool(done or getattr(env, "done", False))
         _append_log(f"{actor_label}: {action_text}")
     except Exception as exc:
         st.session_state.ui_error = str(exc)
@@ -261,7 +260,7 @@ def step_bot_until_human_turn_or_done() -> None:
             if observation_for_player is not None:
                 bot_state = observation_for_player(env, bot_player)
             else:
-                bot_state = env._get_obs()
+                bot_state = env.get_state(bot_player)
             action = agent.choose_action(bot_state, valid_actions, opponent_profile=0)
         except Exception as exc:
             st.session_state.ui_error = f"Bot action failed: {exc}"
@@ -828,10 +827,8 @@ def render_evaluate_page() -> None:
                     "mixed": mixed_opponent_policy,
                 }
                 try:
-                    env = TexasHoldemEnv()
-                    agent = QLearningAgent(action_size=env.action_space.n, epsilon=0.0)
-                    agent.load(Q_TABLE_PATH)
-                    agent.epsilon = 0.0
+                    env = ShortDeckPokerEnv()
+                    agent = load_trained_agent(Q_TABLE_PATH)
                     with st.spinner("Running evaluation..."):
                         summary = evaluate_matchup(
                             f"q_vs_{opponent_name}",
