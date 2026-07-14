@@ -7,7 +7,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
-from config import INPUT_SIZE, OUTPUT_SIZE, HIDDEN_LAYERS, LEARNING_RATE
+from config import INPUT_SIZE, OUTPUT_SIZE, HIDDEN_LAYERS, LEARNING_RATE, DEVICE
 
 
 class QNetwork(nn.Module):
@@ -37,13 +37,14 @@ class QNetwork(nn.Module):
             state = torch.FloatTensor(state)
         if len(state.shape) == 1:
             state = state.unsqueeze(0)
+        state = state.to(DEVICE)
         return self.network(state)
 
     def get_action(self, state):
         """Get greedy action (best Q-value)"""
         with torch.no_grad():
             q_values = self.forward(state)
-            return q_values.argmax(dim=1).item()
+            return q_values.argmax(dim=1).squeeze().item()
 
 
 class AveragePolicyNetwork(nn.Module):
@@ -74,12 +75,13 @@ class AveragePolicyNetwork(nn.Module):
             state = torch.FloatTensor(state)
         if len(state.shape) == 1:
             state = state.unsqueeze(0)
+        state = state.to(DEVICE)
         return self.network(state)
 
     def get_action(self, state):
         """Get stochastic action from policy"""
-        probs = self.forward(state).squeeze()
-        return np.random.choice(len(probs), p=probs.cpu().numpy())
+        probs = self.forward(state).squeeze().detach().cpu().numpy()
+        return np.random.choice(len(probs), p=probs)
 
     def get_probs(self, state):
         """Get action probabilities"""
@@ -95,7 +97,8 @@ class TargetNetwork(nn.Module):
 
     def __init__(self, q_network):
         super(TargetNetwork, self).__init__()
-        self.network = q_network.copy()
+        self.network = type(q_network)()  # Create new instance
+        self.network.load_state_dict(q_network.state_dict())  # Copy weights
 
     def update(self, q_network, tau=0.001):
         """Soft update: θ- = τθ + (1-τ)θ-"""

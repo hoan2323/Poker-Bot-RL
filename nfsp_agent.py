@@ -1,6 +1,12 @@
 """
 nfsp_agent.py - NFSP Agent
 Core AI combining RL and SL components with mixture policy
+
+Changes:
+1. Reservoir: Only save (state, action) when using Best Response
+2. SL: Use Cross Entropy (action) instead of KL Divergence (distribution)
+3. Evaluation: Use Average Policy instead of Best Response
+4. Action Masking: Only choose valid actions
 """
 
 import torch
@@ -28,9 +34,9 @@ class NSFPAgent:
     Components:
     - Q-Network: Learns best response via DQN
     - Target Q-Network: Stable learning via delayed updates
-    - Average Policy Network: Learns average strategy via SL
+    - Average Policy Network: Learns average action via supervised learning
     - M_RL: Replay buffer for RL training
-    - M_SL: Reservoir for SL training
+    - M_SL: Reservoir for storing (state, action) from Best Response
     """
 
     def __init__(self, eta=ANTICIPATORY_PARAM):
@@ -55,48 +61,63 @@ class NSFPAgent:
         self.rl_updates = 0
         self.sl_updates = 0
 
-    def choose_action(self, state, evaluate=False):
-        """
-        Choose action using mixture policy
-        π* = (1-η)π̄ + ησ
+    def _get_masked_probs(self, state, valid_actions):
+        """Get action probabilities with masking for invalid actions"""
+        probs = self.policy_net(state).squeeze().detach().cpu().numpy()
 
-        where:
-        - π̄ is average policy from SL network
-        - σ is best response from Q-network
-        - η is anticipatory parameter
-        """
+        # Mask invalid actions
+        masked_probs = np.zeros_like(probs)
+        for a in valid_actions:
+            masked_probs[a] = probs[a]
+
+        # Normalize
+        total = masked_probs.sum()
+        if total > 0:
+            masked_probs /= total
+        else:
+            # If all masked, return uniform over valid actions
+            masked_probs = np.ones_like(probs) / len(valid_actions)
+            for a in range(len(probs)):
+                if a not in valid_actions:
+                    masked_probs[a] = 0
+
+        return masked_probs
+
+    def _get_masked_q_values(self, state, valid_actions):
+        """Get Q-values with masking for invalid actions"""
+        q_values = self.q_net(state).squeeze().detach().cpu().numpy()
+
+        # Mask invalid actions
+        masked_q = np.full_like(q_values, -float('inf'))
+        for a in valid_actions:
+            masked_q[a] = q_values[a]
+
+        return masked_q
+
+    def choose_action(self, state, valid_actions=None, evaluate=False):
+        """Choose action using mixture policy"""
         if evaluate:
-            # Pure best response during evaluation
-            return self.q_net.get_action(state)
+            probs = self._get_masked_probs(state, valid_actions)
+            return np.random.choice(len(probs), p=probs)
 
         # Mixture policy during training
         if random.random() < self.eta:
-            # Best response (greedy Q)
-            return self.q_net.get_action(state)
+            q_values = self._get_masked_q_values(state, valid_actions)
+            return int(np.argmax(q_values))
         else:
-            # Average policy (stochastic from SL network)
-            return self.policy_net.get_action(state)
+            probs = self._get_masked_probs(state, valid_actions)
+            return np.random.choice(len(probs), p=probs)
 
-    def store_experience(self, state, action, reward, next_state, done):
+    def store_experience(self, state, action, reward, next_state, done, valid_actions=None):
         """Store experience to both memories"""
         self.total_steps += 1
 
         # Store to RL buffer
         self.rl_buffer.add(state, action, reward, next_state, done)
 
-        # Store to SL reservoir with current mixture policy
-        # Get the anticipatory policy (what we actually used)
-        with torch.no_grad():
-            state_tensor = torch.FloatTensor(state).to(DEVICE)
-            q_values = self.q_net(state_tensor)
-            q_probs = F.softmax(q_values, dim=-1).cpu().numpy().squeeze()
-
-            policy_probs = self.policy_net(state_tensor).cpu().numpy().squeeze()
-
-            # Mixture policy
-            mixture_probs = (1 - self.eta) * policy_probs + self.eta * q_probs
-
-        self.sl_reservoir.add(state, mixture_probs)
+        # Store to SL reservoir only when using Best Response (10% chance)
+        if random.random() < self.eta:
+            self.sl_reservoir.add(state, action)
 
     def update_rl(self):
         """Update Q-Network from M_RL using DQN"""
@@ -106,54 +127,45 @@ class NSFPAgent:
         # Sample batch
         batch = self.rl_buffer.sample(BATCH_SIZE)
 
-        # Unpack batch
-        states = torch.FloatTensor(np.array([e[0] for e in batch])).to(DEVICE)
+        # Unpack batch - convert to numpy array directly
+        states = torch.FloatTensor(np.array([e[0] for e in batch], dtype=np.float32)).to(DEVICE)
         actions = torch.LongTensor([e[1] for e in batch]).to(DEVICE)
         rewards = torch.FloatTensor([e[2] for e in batch]).to(DEVICE)
-        next_states = torch.FloatTensor(np.array([e[3] for e in batch])).to(DEVICE)
+        next_states = torch.FloatTensor(np.array([e[3] for e in batch], dtype=np.float32)).to(DEVICE)
         dones = torch.FloatTensor([e[4] for e in batch]).to(DEVICE)
 
-        # Current Q-values
+        # Forward pass
         current_q = self.q_net(states).gather(1, actions.unsqueeze(1)).squeeze()
 
-        # Target Q-values (from target network)
+        # Target Q-values
         with torch.no_grad():
             next_q = self.target_net.network(next_states).max(1)[0]
             target_q = rewards + GAMMA * next_q * (1 - dones)
 
-        # Compute loss
+        # Compute loss and update
         loss = F.mse_loss(current_q, target_q)
-
-        # Update
         self.q_optimizer.zero_grad()
         loss.backward()
         self.q_optimizer.step()
 
         self.rl_updates += 1
-
         return loss.item()
 
     def update_sl(self):
-        """Update Average Policy Network from M_SL using supervised learning"""
+        """Update Average Policy Network from M_SL using Cross Entropy"""
         if not self.sl_reservoir.is_ready(MIN_SL_SAMPLES):
             return None
 
         # Sample batch
         batch = self.sl_reservoir.sample(BATCH_SIZE)
 
-        # Unpack batch
-        states = torch.FloatTensor(np.array([e[0] for e in batch])).to(DEVICE)
-        target_policies = torch.FloatTensor(np.array([e[1] for e in batch])).to(DEVICE)
+        # Unpack batch: (state, action)
+        states = torch.FloatTensor(np.array([e[0] for e in batch], dtype=np.float32)).to(DEVICE)
+        actions = torch.LongTensor([e[1] for e in batch]).to(DEVICE)
 
-        # Get predicted policies
-        predicted_policies = self.policy_net(states)
-
-        # Cross-entropy loss
-        loss = F.kl_div(
-            torch.log(predicted_policies + 1e-8),
-            target_policies,
-            reduction='batchmean'
-        )
+        # Forward pass and loss
+        predicted_probs = self.policy_net(states)
+        loss = F.cross_entropy(predicted_probs, actions)
 
         # Update
         self.policy_optimizer.zero_grad()
@@ -161,7 +173,6 @@ class NSFPAgent:
         self.policy_optimizer.step()
 
         self.sl_updates += 1
-
         return loss.item()
 
     def update(self):
@@ -214,10 +225,15 @@ if __name__ == "__main__":
 
     agent = NSFPAgent()
 
-    # Test choose action
+    # Test choose action with valid actions
     state = np.random.randn(186)
-    action = agent.choose_action(state)
-    print(f"Chosen action: {action}")
+    valid_actions = [0, 1]
+    action = agent.choose_action(state, valid_actions)
+    print(f"Chosen action (valid {valid_actions}): {action}")
+
+    valid_actions = [0, 1, 2]
+    action = agent.choose_action(state, valid_actions)
+    print(f"Chosen action (valid {valid_actions}): {action}")
 
     # Test store experience
     for _ in range(100):
@@ -226,13 +242,15 @@ if __name__ == "__main__":
         reward = random.choice([-1, 0, 1])
         next_state = np.random.randn(186)
         done = random.choice([True, False])
-        agent.store_experience(state, action, reward, next_state, done)
+        valid = [0, 1, 2]
+        agent.store_experience(state, action, reward, next_state, done, valid)
 
     print(f"RL buffer size: {len(agent.rl_buffer)}")
     print(f"SL reservoir size: {len(agent.sl_reservoir)}")
 
     # Test update
-    rl_loss, sl_loss = agent.update()
+    rl_loss = agent.update_rl()
+    sl_loss = agent.update_sl()
     print(f"RL Loss: {rl_loss}")
     print(f"SL Loss: {sl_loss}")
 

@@ -282,19 +282,24 @@ def is_flush(cards):
 
 
 def is_straight(cards):
-    """Check if cards contain a straight"""
-    rank_mask = 0
-    for card in cards:
-        if 0 <= card < 20:
-            rank = card // 4
-            rank_mask |= 1 << rank
+    """
+    Check if these 5 cards form a straight.
+    Short deck: only 10-J-Q-K-A (ranks 0,1,2,3,4) is valid.
+    """
+    if len(cards) != 5:
+        return False
 
-    # Check for 5 consecutive bits (short deck: only 10-J-Q-K-A)
-    for i in range(5):
-        needed = 0b11111 << i
-        if (rank_mask & needed) == needed:
-            return True
-    return False
+    # Get rank of each card (each rank = 1 card in short deck)
+    ranks = set()
+    for card in cards:
+        rank = card // 4
+        # Already have this rank? Not a straight!
+        if rank in ranks:
+            return False
+        ranks.add(rank)
+
+    # Check if we have exactly {0, 1, 2, 3, 4} (10,J,Q,K,A)
+    return ranks == {0, 1, 2, 3, 4}
 
 
 def evaluate_hand(cards):

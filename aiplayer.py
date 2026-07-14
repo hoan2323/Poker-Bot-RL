@@ -58,7 +58,7 @@ class AIPlayer:
         if self.agent is None:
             raise RuntimeError("No model loaded. Call load_model() first.")
 
-        action = self.agent.choose_action(state, evaluate=True)
+        action = self.agent.choose_action(state, valid_actions, evaluate=True)
 
         # Ensure valid action
         if valid_actions is not None and action not in valid_actions:

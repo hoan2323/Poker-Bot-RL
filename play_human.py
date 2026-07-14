@@ -9,7 +9,7 @@ import sys
 
 def clear_screen():
     """Clear terminal screen"""
-    os.system('cls' if os.name == 'nt' else 'clear')
+    pass  # Disable to see all actions
 
 
 def card_to_string(card):
@@ -93,8 +93,33 @@ def get_human_action(valid_actions):
             print("Please enter a number.")
 
 
-def play_hand(ai_player, human_player=0, verbose=True):
+def get_heuristic_action(env):
+    """Bot plays based on hand strength"""
+    from environment import evaluate_hand
+
+    hand = env.hands[1] + env.board
+    hand_rank = evaluate_hand(hand)[0]
+
+    valid = env.get_valid_actions()
+
+    # Hand strength thresholds
+    if hand_rank >= 4:  # Straight or better
+        return 1  # Bet/Raise
+    elif hand_rank >= 2:  # Two pair or better
+        if 1 in valid:
+            return 1
+        return 0
+    else:
+        # Weak hand - check or fold
+        if 2 in valid and hand_rank < 1:
+            return 2  # Fold
+        return 0  # Check/Call
+
+
+def play_hand(ai_player, human_player=0, verbose=True, use_heuristic=False):
     """Play one hand"""
+    action_log = []  # Log all actions
+
     # Start game
     state = ai_player.start_new_game(starting_player=human_player)
 
@@ -112,18 +137,19 @@ def play_hand(ai_player, human_player=0, verbose=True):
             print_game_state(ai_player.env, human_player)
 
         current = ai_player.env.current_player
+        action_names = {0: 'Check/Call', 1: 'Bet/Raise', 2: 'Fold'}
 
         if current == human_player:
             # Human's turn
             action = get_human_action(game_state['valid_actions'])
+            action_log.append(f"You: {action_names[action]}")
         else:
-            # AI's turn
-            if verbose:
-                print("\nOpponent is thinking...")
-            action = ai_player.get_action(state, game_state['valid_actions'])
-            if verbose:
-                action_names = {0: 'Check/Call', 1: 'Bet/Raise', 2: 'Fold'}
-                print(f"Opponent chose: {action_names[action]}")
+            # Bot's turn
+            if use_heuristic:
+                action = get_heuristic_action(ai_player.env)
+            else:
+                action = ai_player.get_action(state, game_state['valid_actions'])
+            action_log.append(f"Bot: {action_names[action]}")
 
         # Play
         state, reward, done, info = ai_player.play(action)
@@ -134,6 +160,10 @@ def play_hand(ai_player, human_player=0, verbose=True):
         print("\n" + "=" * 50)
         print("HAND COMPLETE")
         print("=" * 50)
+
+        # Show action log
+        print("Actions: " + " -> ".join(action_log))
+        print("-" * 50)
 
         # Show final hands
         print(f"Pot: {ai_player.env.pot}")
@@ -174,6 +204,8 @@ def main():
     parser = argparse.ArgumentParser(description='Play poker against NFSP bot')
     parser.add_argument('--model', type=str, default='nfsp_agent_final.pt',
                        help='Path to trained model')
+    parser.add_argument('--heuristic', action='store_true',
+                       help='Use heuristic bot instead of trained model')
     parser.add_argument('--human-first', action='store_true',
                        help='Human plays first')
 
@@ -183,13 +215,17 @@ def main():
     ai = AIPlayer()
 
     # Try to load model
-    try:
-        ai.load_model(args.model)
-        ai.set_evaluate_mode()
-        print("\nLoaded trained model!")
-    except:
-        print("\nWarning: Could not load model. Using untrained agent.")
-        print("Train first with: python train.py")
+    use_heuristic = '--heuristic' in sys.argv
+    if use_heuristic:
+        print("\nUsing heuristic bot (no training needed)")
+    else:
+        try:
+            ai.load_model(args.model)
+            ai.set_evaluate_mode()
+            print("\nLoaded trained model!")
+        except:
+            print("\nWarning: Could not load model. Using heuristic bot.")
+            use_heuristic = True
 
     # Play
     human_player = 0 if args.human_first else 1
@@ -199,7 +235,7 @@ def main():
     total_ties = 0
 
     while True:
-        winner = play_hand(ai, human_player=human_player)
+        winner = play_hand(ai, human_player=human_player, use_heuristic=use_heuristic)
 
         if winner == human_player:
             total_wins += 1

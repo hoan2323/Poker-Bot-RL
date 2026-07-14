@@ -1,6 +1,9 @@
 """
 reservoir.py - Reservoir Sampling for SL Experiences (M_SL)
 Stores experiences for supervised learning of average policy
+
+Changed: Now stores (state, action) instead of (state, policy)
+Used for Cross Entropy loss to learn Best Response actions
 """
 
 import numpy as np
@@ -19,26 +22,25 @@ class ReservoirSampling:
         self.buffer = []
         self.count = 0  # Total items added
 
-    def add(self, state, policy):
+    def add(self, state, action):
         """
         Add experience using reservoir sampling
-        Maintains uniform sample of all seen experiences
         """
         self.count += 1
 
         if len(self.buffer) < self.capacity:
-            # Buffer not full - add new item
-            self.buffer.append((state.copy(), policy.copy()))
+            # Buffer not full - add new item (no copy needed)
+            self.buffer.append((state, action))
         else:
             # Buffer full - random replacement
             j = random.randint(0, self.count - 1)
             if j < self.capacity:
-                self.buffer[j] = (state.copy(), policy.copy())
+                self.buffer[j] = (state, action)
 
     def sample(self, batch_size):
         """
         Random sample from reservoir
-        Returns: list of (state, policy) tuples
+        Returns: list of (state, action) tuples
         """
         if len(self.buffer) <= batch_size:
             return self.buffer.copy()
@@ -77,11 +79,11 @@ if __name__ == "__main__":
     # Test reservoir
     reservoir = ReservoirSampling(capacity=1000)
 
-    # Add many samples
+    # Add many samples (state, action)
     for i in range(5000):
         state = np.random.randn(186)
-        policy = np.random.dirichlet([1, 1, 1])  # Random policy
-        reservoir.add(state, policy)
+        action = random.choice([0, 1, 2])
+        reservoir.add(state, action)
 
     print(f"Total added: {reservoir.count}")
     print(f"Buffer size: {len(reservoir)}")
@@ -90,5 +92,6 @@ if __name__ == "__main__":
     # Sample
     batch = reservoir.sample(8)
     print(f"Sampled batch size: {len(batch)}")
+    print(f"First sample: state shape={batch[0][0].shape}, action={batch[0][1]}")
 
     print("\nReservoir working correctly!")

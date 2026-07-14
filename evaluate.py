@@ -20,7 +20,7 @@ def always_check_or_call(env):
     """Always check if possible, call if facing bet"""
     actions = env.get_valid_actions()
     if 0 in actions:
-        return 0  # Check/Call
+        return 0
     return actions[0]
 
 
@@ -28,21 +28,21 @@ def always_bet_or_call(env):
     """Always bet if possible, call if facing bet"""
     actions = env.get_valid_actions()
     if 1 in actions:
-        return 1  # Bet/Raise
-    return 0  # Call
+        return 1
+    return 0
 
 
 def call_station(env):
     """Call station - never folds"""
     actions = env.get_valid_actions()
     if 0 in actions:
-        return 0  # Always call/check
+        return 0
     return actions[0]
 
 
 def tight_agent(env):
     """Tight agent - only plays strong hands"""
-    from environment import evaluate_hand, get_rank_counts
+    from environment import evaluate_hand
 
     player = env.current_player
     hand = env.hands[player]
@@ -54,24 +54,22 @@ def tight_agent(env):
 
     actions = env.get_valid_actions()
 
-    # If facing bet, only call with strong hand
     if 2 in actions and env.bet_size > 0:
-        if hand_rank < 2:  # Less than two pair
-            return 2  # Fold
+        if hand_rank < 2:
+            return 2
 
-    # If can bet, only bet with strong hand
     if 1 in actions and hand_rank >= 2:
-        return 1  # Bet
+        return 1
 
-    return 0  # Check/Call
+    return 0
 
 
 def aggressive_agent(env):
     """Aggressive agent - bets often"""
     actions = env.get_valid_actions()
     if 1 in actions:
-        return 1  # Bet/Raise
-    return 0  # Call
+        return 1
+    return 0
 
 
 def heuristic_agent(env):
@@ -88,26 +86,23 @@ def heuristic_agent(env):
 
     actions = env.get_valid_actions()
 
-    # Strong hand (two pair+)
     if hand_rank >= 2:
         if 1 in actions:
-            return 1  # Bet
-        return 0  # Call
+            return 1
+        return 0
 
-    # Medium hand (one pair)
     if hand_rank == 1:
         if 1 in actions and random.random() < 0.5:
-            return 1  # Sometimes bet
+            return 1
         if 0 in actions:
-            return 0  # Call
-        return 2  # Fold
+            return 0
+        return 2
 
-    # Weak hand
     if 2 in actions:
-        return 2  # Fold
+        return 2
     if 1 in actions and random.random() < 0.1:
-        return 1  # Occasional bluff
-    return 0  # Check
+        return 1
+    return 0
 
 
 # Opponent registry
@@ -125,15 +120,7 @@ OPPONENTS = {
 def evaluate_agent(agent, opponent_name='random', n_games=5000, verbose=True):
     """
     Evaluate agent against a specific opponent
-
-    Args:
-        agent: NSFPAgent
-        opponent_name: name of opponent
-        n_games: number of games to play
-        verbose: print results
-
-    Returns:
-        win_rate: fraction of games won
+    Agent uses Average Policy (evaluate=True)
     """
     if opponent_name not in OPPONENTS:
         raise ValueError(f"Unknown opponent: {opponent_name}")
@@ -147,32 +134,25 @@ def evaluate_agent(agent, opponent_name='random', n_games=5000, verbose=True):
     total_reward = 0
 
     for _ in range(n_games):
-        # Reset game
         state = env.reset(starting_player=random.randint(0, 1))
-
-        # Alternate who goes first
         agent_player = env.current_player
 
-        # Play game
         while not env.done:
             current_player = env.current_player
 
             if current_player == agent_player:
-                # Agent's turn
+                # Agent's turn - use Average Policy with action masking
                 valid_actions = env.get_valid_actions()
-                action = agent.choose_action(state, evaluate=True)
+                action = agent.choose_action(state, valid_actions, evaluate=True)
                 if action not in valid_actions:
                     action = valid_actions[0]
             else:
                 # Opponent's turn
                 action = opponent(env)
 
-            # Execute
             next_state, reward, done, info = env.step(action)
-
             state = next_state
 
-        # Record result
         if env.winner == agent_player:
             wins += 1
             total_reward += env.pot
@@ -197,12 +177,7 @@ def evaluate_agent(agent, opponent_name='random', n_games=5000, verbose=True):
 
 
 def evaluate_all(agent, n_games=2000, verbose=True):
-    """
-    Evaluate agent against all opponents
-
-    Returns:
-        dict of opponent_name -> win_rate
-    """
+    """Evaluate agent against all opponents"""
     results = {}
 
     opponent_names = ['random', 'call_station', 'tight', 'aggressive', 'heuristic']
@@ -218,6 +193,7 @@ def evaluate_all(agent, n_games=2000, verbose=True):
 def evaluate_self_play(agent1, agent2, n_games=5000, verbose=True):
     """
     Evaluate two agents playing against each other
+    Both use Average Policy
     """
     env = ShortDeckPokerEnv()
 
@@ -230,13 +206,13 @@ def evaluate_self_play(agent1, agent2, n_games=5000, verbose=True):
 
         while not env.done:
             current_player = env.current_player
+            valid_actions = env.get_valid_actions()
 
             if current_player == 0:
-                action = agent1.choose_action(state, evaluate=True)
+                action = agent1.choose_action(state, valid_actions, evaluate=True)
             else:
-                action = agent2.choose_action(state, evaluate=True)
+                action = agent2.choose_action(state, valid_actions, evaluate=True)
 
-            valid_actions = env.get_valid_actions()
             if action not in valid_actions:
                 action = valid_actions[0]
 
@@ -265,15 +241,12 @@ def evaluate_self_play(agent1, agent2, n_games=5000, verbose=True):
 
 
 if __name__ == "__main__":
-    # Test evaluation
     from nfsp_agent import NSFPAgent
 
     print("Testing Evaluation...")
 
-    # Create random agent for testing
     agent = NSFPAgent()
 
-    # Quick evaluation
     print("\n--- Quick Evaluation (100 games each) ---")
     evaluate_agent(agent, 'random', n_games=100, verbose=True)
     evaluate_agent(agent, 'heuristic', n_games=100, verbose=True)
