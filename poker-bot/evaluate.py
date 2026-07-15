@@ -506,7 +506,7 @@ def print_table(rows):
 
 def save_evaluation_report(rows, path=EVALUATION_REPORT_PATH):
     report = {
-        "format_version": 2,
+        "format_version": 3,
         "environment": "ShortDeckPokerEnv",
         "matchups": rows,
     }
@@ -515,7 +515,8 @@ def save_evaluation_report(rows, path=EVALUATION_REPORT_PATH):
 
 
 def load_trained_agent(q_table_path=Q_TABLE_PATH):
-    require_current_training_metadata(BASE_DIR)
+    q_table_path = Path(q_table_path)
+    require_current_training_metadata(q_table_path.parent)
     agent = QLearningAgent(action_size=3, epsilon=0.0)
     agent.load(q_table_path)
     agent.epsilon = 0.0
@@ -570,4 +571,11 @@ def run_evaluation():
 
 
 if __name__ == "__main__":
-    run_evaluation()
+    try:
+        run_evaluation()
+    except (FileNotFoundError, RuntimeError, ValueError) as exc:
+        raise SystemExit(
+            f"Cannot evaluate the saved agent: {exc}\n"
+            "Run `python train.py --episodes 1000 --eval-interval 100` first "
+            "to create artifacts compatible with the current environment."
+        ) from None

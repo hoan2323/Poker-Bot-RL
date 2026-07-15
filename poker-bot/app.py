@@ -21,6 +21,7 @@ try:
     )
     from game_results import normalized_step_info
     from training_artifacts import require_current_training_metadata
+    from bot_arena_ui import render_bot_arena_tab
 except Exception as exc:
     ShortDeckPokerEnv = None
     QLearningAgent = None
@@ -34,13 +35,15 @@ except Exception as exc:
     random_policy = None
     normalized_step_info = None
     require_current_training_metadata = None
+    render_bot_arena_tab = None
     IMPORT_ERROR = exc
 else:
     IMPORT_ERROR = None
 
 
 BASE_DIR = Path(__file__).resolve().parent
-Q_TABLE_PATH = BASE_DIR / "q_table.npy"
+CURRENT_Q_TABLE_PATH = BASE_DIR / "artifacts" / "current" / "q_table.npy"
+Q_TABLE_PATH = CURRENT_Q_TABLE_PATH if CURRENT_Q_TABLE_PATH.exists() else BASE_DIR / "q_table.npy"
 TRAINING_FILES = {
     "Reward over time": BASE_DIR / "rewards.npy",
     "Win rate over time": BASE_DIR / "win_rates.npy",
@@ -127,7 +130,7 @@ def _q_table_status() -> Dict[str, Any]:
         table = data.item() if getattr(data, "shape", None) == () else data
         states = len(table) if hasattr(table, "__len__") else None
         if require_current_training_metadata is not None:
-            require_current_training_metadata(BASE_DIR)
+            require_current_training_metadata(Q_TABLE_PATH.parent)
         return {"exists": True, "states": states, "error": None}
     except Exception as exc:
         return {"exists": True, "states": None, "error": str(exc)}
@@ -1307,7 +1310,9 @@ def inject_custom_css() -> None:
 def _render_sidebar() -> str:
     st.sidebar.title("Poker Bot RL")
     st.sidebar.caption("Texas Hold'em 2-player - Q-Learning Bot - Local Demo")
-    mode = st.sidebar.radio("Mode", ["Play vs Bot", "Evaluate Bot", "Training Results"])
+    mode = st.sidebar.radio(
+        "Mode", ["Play vs Bot", "Evaluate Bot", "Training Results", "🤖 Bot Arena"]
+    )
 
     st.sidebar.divider()
     st.sidebar.markdown("**Q-table Status**")
@@ -1356,8 +1361,12 @@ def main() -> None:
         render_play_page()
     elif mode == "Evaluate Bot":
         render_evaluate_page()
-    else:
+    elif mode == "Training Results":
         render_training_results_page()
+    elif render_bot_arena_tab is not None:
+        render_bot_arena_tab()
+    else:
+        st.error(f"Bot Arena không thể khởi tạo: {IMPORT_ERROR}")
 
 
 if __name__ == "__main__":

@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from train import EPSILON, EPSILON_DECAY, MIN_EPSILON
+from training_artifacts import require_current_training_metadata
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -147,6 +148,7 @@ def create_evaluation_report(report, output_path=EVALUATION_FIGURE_PATH):
 
 
 def main():
+    require_current_training_metadata(BASE_DIR)
     create_training_curve()
     report = load_evaluation_report()
     if report is None:
@@ -156,4 +158,10 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except (FileNotFoundError, RuntimeError, ValueError, OSError) as exc:
+        raise SystemExit(
+            f"Cannot create plots: {exc}\n"
+            "Run train.py first, then evaluate.py, to generate compatible artifacts."
+        ) from None

@@ -1,0 +1,18 @@
+{
+  "format_version": 3,
+  "environment": "ShortDeckPokerEnv",
+  "env_class": "ShortDeckPokerEnv",
+  "terminal_result_adapter": "game_results.resolve_terminal_result",
+  "episodes": 10000,
+  "q_table_states": 1242,
+  "state_size": 186,
+  "state_key_size": 15,
+  "action_size": 3,
+  "q_table_shape": [
+    1242,
+    3
+  ],
+  "created_at": "2026-07-14T14:55:45.170076+00:00",
+  "created_at_utc": "2026-07-14T14:55:45.170076+00:00",
+  "note": "Sparse dict Q-table; q_table_shape is its logical shape."
+}

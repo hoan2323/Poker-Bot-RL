@@ -1,3 +1,4 @@
+import argparse
 import random
 from pathlib import Path
 import numpy as np
@@ -151,7 +152,14 @@ def shaping_reward(agent, state, action, valid_actions):
     return reward
 
 
-def run_training():
+def run_training(episodes=EPISODES, log_interval=LOG_INTERVAL, output_dir=None, seed=42):
+    if episodes <= 0:
+        raise ValueError("episodes must be greater than zero")
+    if log_interval <= 0:
+        raise ValueError("log_interval must be greater than zero")
+
+    random.seed(seed)
+    np.random.seed(seed)
     env = ShortDeckPokerEnv()
     agent = QLearningAgent(
         action_size=3,
@@ -173,7 +181,7 @@ def run_training():
     opponent_counts = {name: 0 for name in OPPONENT_POLICIES}
     opponent_models = {name: OpponentModel() for name in OPPONENT_POLICIES}
 
-    for episode in range(EPISODES):
+    for episode in range(episodes):
         opponent_name, opponent_policy = choose_training_opponent(episode)
         opponent_counts[opponent_name] += 1
 
@@ -269,16 +277,16 @@ def run_training():
 
         agent.epsilon = max(MIN_EPSILON, agent.epsilon * EPSILON_DECAY)
 
-        if games_played % LOG_INTERVAL == 0:
-            recent_rewards = rewards[-LOG_INTERVAL:]
+        if games_played % log_interval == 0:
+            recent_rewards = rewards[-log_interval:]
             avg_reward = float(np.mean(recent_rewards))
             recent_wins = sum(1 for value in recent_rewards if value > 0)
             recent_draws = sum(1 for value in recent_rewards if value == 0)
-            recent_win_rate = recent_wins / LOG_INTERVAL
-            recent_draw_rate = recent_draws / LOG_INTERVAL
+            recent_win_rate = recent_wins / len(recent_rewards)
+            recent_draw_rate = recent_draws / len(recent_rewards)
 
             print(
-                f"Episode {games_played}/{EPISODES} | "
+                f"Episode {games_played}/{episodes} | "
                 f"Avg Reward: {avg_reward:.4f} | "
                 f"Win Rate: {recent_win_rate:.4f} | "
                 f"Draw Rate: {recent_draw_rate:.4f} | "
@@ -287,16 +295,40 @@ def run_training():
                 f"Opponents: {opponent_counts}"
             )
 
-    output_dir = Path(__file__).resolve().parent
+    output_dir = Path(output_dir) if output_dir else Path(__file__).resolve().parent
+    output_dir.mkdir(parents=True, exist_ok=True)
     agent.save(output_dir / "q_table.npy")
     np.save(output_dir / "rewards.npy", np.array(rewards, dtype=np.float64))
     np.save(output_dir / "win_rates.npy", np.array(win_rates, dtype=np.float64))
     np.save(output_dir / "draw_rates.npy", np.array(draw_rates, dtype=np.float64))
     np.save(output_dir / "loss_rates.npy", np.array(loss_rates, dtype=np.float64))
-    write_training_metadata(output_dir, EPISODES, len(agent.q_table))
+    write_training_metadata(output_dir, episodes, len(agent.q_table))
+    print(f"Compatible Q-table saved to {output_dir / 'q_table.npy'}")
 
     return agent, rewards, win_rates, draw_rates, loss_rates
 
 
+def parse_args():
+    parser = argparse.ArgumentParser(description="Train the tabular Q-learning poker bot.")
+    parser.add_argument("--episodes", type=int, default=EPISODES)
+    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument(
+        "--eval-interval",
+        "--log-interval",
+        dest="log_interval",
+        type=int,
+        default=LOG_INTERVAL,
+        help="Print rolling training statistics every N episodes.",
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=Path(__file__).resolve().parent,
+        help="Directory for q_table.npy, metrics, and metadata.",
+    )
+    return parser.parse_args()
+
+
 if __name__ == "__main__":
-    run_training()
+    args = parse_args()
+    run_training(args.episodes, args.log_interval, args.output_dir, args.seed)

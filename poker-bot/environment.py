@@ -13,7 +13,7 @@ class ShortDeckPokerEnv:
     Short Deck Texas Hold'em Environment for NFSP
     """
 
-    def __init__(self):
+    def __init__(self, max_raises_per_round=1):
         # Card representation: 0-19
         # Rank: card // 4 (0=10, 1=J, 2=Q, 3=K, 4=A)
         # Suit: card % 4 (0=C, 1=D, 2=H, 3=S)
@@ -36,6 +36,8 @@ class ShortDeckPokerEnv:
         self.bet_size = 0  # Current bet in this round
         self.player_bets = {0: 0, 1: 0}  # Total bet this round
         self.actions_this_round = []
+        self.max_raises_per_round = max_raises_per_round
+        self.raises_this_round = 0
 
         # Terminal state
         self.done = False
@@ -62,6 +64,7 @@ class ShortDeckPokerEnv:
         self.bet_size = 0
         self.player_bets = {0: 0, 1: 0}
         self.actions_this_round = []
+        self.raises_this_round = 0
 
         # Reset terminal
         self.done = False
@@ -105,8 +108,11 @@ class ShortDeckPokerEnv:
             # No bet: Check or Bet
             return [0, 1]
         else:
-            # Facing bet: Call, Raise, or Fold
-            return [0, 1, 2]
+            # Facing bet: Call or Fold; allow only a bounded number of raises.
+            actions = [0, 2]
+            if self.raises_this_round < self.max_raises_per_round:
+                actions.insert(1, 1)
+            return actions
 
     def step(self, action):
         """
@@ -164,14 +170,19 @@ class ShortDeckPokerEnv:
                 self.bet_size += 1
                 self.player_bets[player] = self.bet_size
                 self.pot += 1
+                self.raises_this_round += 1
                 self.current_player = 1 - self.current_player
 
+        if self.done:
+            reward = self.rewards[0]
         return self.get_state(0), reward, self.done, self._get_info()
 
     def _advance_round(self):
         """Advance to next round or showdown"""
         self.actions_this_round = []
         self.player_bets = {0: 0, 1: 0}
+        self.bet_size = 0
+        self.raises_this_round = 0
 
         if self.round == 0:
             # Preflop -> Flop
@@ -197,17 +208,18 @@ class ShortDeckPokerEnv:
     def _showdown(self):
         """Compare hands at showdown"""
         self.done = True
-        winner = compare_hands(
+        comparison = compare_hands(
             self.hands[0] + self.board,
             self.hands[1] + self.board
         )
-        self.winner = winner
-
-        if winner == 1:  # Player 1 wins
-            self.rewards = {0: -self.pot, 1: self.pot}
-        elif winner == -1:  # Player 0 wins
+        if comparison > 0:
+            self.winner = 0
             self.rewards = {0: self.pot, 1: -self.pot}
-        else:  # Tie
+        elif comparison < 0:
+            self.winner = 1
+            self.rewards = {0: -self.pot, 1: self.pot}
+        else:
+            self.winner = None
             self.rewards = {0: 0, 1: 0}
 
     def get_reward(self, player):
@@ -318,55 +330,64 @@ def evaluate_hand(cards):
 
 
 def evaluate_5_cards(cards):
-    """Evaluate a 5-card hand"""
+    """Evaluate exactly five cards using standard poker hand ordering."""
+    if len(cards) != 5 or len(set(cards)) != 5:
+        raise ValueError("evaluate_5_cards expects exactly five unique cards")
+    if any(not isinstance(card, (int, np.integer)) or not 0 <= card < 20 for card in cards):
+        raise ValueError("Cards must be integer ids in the range 0..19")
+
     rank_counts = get_rank_counts(cards)
-    has_flush = is_flush(cards)
-    has_straight = is_straight(cards)
+    ranks = [card_to_rank(card) for card in cards]
+    suits = [card_to_suit(card) for card in cards]
+    has_flush = len(set(suits)) == 1
+    has_straight = len(set(ranks)) == 5 and set(ranks) == set(range(5))
+    straight_high = max(ranks) if has_straight else None
 
     # Straight flush
     if has_flush and has_straight:
-        return (STRAIGHT_FLUSH, ())
+        return (STRAIGHT_FLUSH, (straight_high,))
 
     # Four of a kind
     if 4 in rank_counts:
-        kicker = [r for r in range(4, -1, -1) if rank_counts[r] != 4][0]
-        return (FOUR_OF_A_KIND, (rank_counts.index(4), kicker))
+        quad_rank = rank_counts.index(4)
+        kicker = max(r for r, count in enumerate(rank_counts) if count == 1)
+        return (FOUR_OF_A_KIND, (quad_rank, kicker))
 
     # Full house
     if 3 in rank_counts and 2 in rank_counts:
-        trips = rank_counts.index(3)
-        pair = [r for r in range(4, -1, -1) if rank_counts[r] == 2][0]
+        trips = max(r for r, count in enumerate(rank_counts) if count == 3)
+        pair = max(r for r, count in enumerate(rank_counts) if count == 2)
         return (FULL_HOUSE, (trips, pair))
 
     # Flush
     if has_flush:
-        kickers = sorted([c // 4 for c in cards], reverse=True)[:5]
+        kickers = sorted(ranks, reverse=True)
         return (FLUSH, tuple(kickers))
 
     # Straight
     if has_straight:
-        return (STRAIGHT, ())
+        return (STRAIGHT, (straight_high,))
 
     # Three of a kind
     if 3 in rank_counts:
-        trips = rank_counts.index(3)
-        kickers = tuple(r for r in range(4, -1, -1) if r != trips)
-        return (THREE_OF_A_KIND, kickers)
+        trips = max(r for r, count in enumerate(rank_counts) if count == 3)
+        kickers = tuple(sorted((r for r in ranks if r != trips), reverse=True))
+        return (THREE_OF_A_KIND, (trips,) + kickers)
 
     # Two pair
     pairs = sorted([r for r in range(5) if rank_counts[r] == 2], reverse=True)
     if len(pairs) >= 2:
-        kicker = [r for r in range(4, -1, -1) if r not in pairs][0]
+        kicker = max(r for r, count in enumerate(rank_counts) if count == 1)
         return (TWO_PAIR, (pairs[0], pairs[1], kicker))
 
     # One pair
     if 2 in rank_counts:
-        pair = rank_counts.index(2)
-        kickers = tuple(r for r in range(4, -1, -1) if r != pair)
-        return (ONE_PAIR, kickers)
+        pair = max(r for r, count in enumerate(rank_counts) if count == 2)
+        kickers = tuple(sorted((r for r in ranks if r != pair), reverse=True))
+        return (ONE_PAIR, (pair,) + kickers)
 
     # High card
-    kickers = tuple(sorted([c // 4 for c in cards], reverse=True))
+    kickers = tuple(sorted(ranks, reverse=True))
     return (HIGH_CARD, kickers)
 
 

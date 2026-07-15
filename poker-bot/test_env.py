@@ -1,5 +1,6 @@
 import numpy as np
 import pytest
+import random
 
 from environment import ShortDeckPokerEnv, compare_hands, evaluate_hand
 
@@ -103,3 +104,55 @@ def test_hand_evaluation_is_available_from_environment_module():
 
     assert evaluate_hand(four_of_a_kind)[0] > evaluate_hand(one_pair)[0]
     assert compare_hands(four_of_a_kind, one_pair) == 1
+
+
+def _advance_to_river(env):
+    for _ in range(6):
+        env.step(0)
+    assert env.round == 3
+
+
+def test_showdown_exposes_player_id_reward_and_zero_sum_rewards():
+    env = ShortDeckPokerEnv()
+    env.reset()
+    _advance_to_river(env)
+    env.hands = {0: [0, 4], 1: [1, 2]}
+    env.board = [8, 12, 16, 5, 6]
+    env.step(0)
+    _, reward, done, info = env.step(0)
+
+    assert done
+    assert env.winner == 0
+    assert info["winner"] == 0
+    assert reward == env.pot
+    assert env.get_reward(0) == -env.get_reward(1)
+
+
+def test_only_one_raise_is_allowed_per_round():
+    env = ShortDeckPokerEnv(max_raises_per_round=1)
+    env.reset()
+    env.step(1)  # bet
+    env.step(1)  # single allowed raise
+    assert env.get_valid_actions() == [0, 2]
+    with pytest.raises(ValueError):
+        env.step(1)
+    env.step(0)
+    assert env.round == 1
+
+
+def test_random_500_episodes_finish_with_valid_actions():
+    rng = random.Random(42)
+    env = ShortDeckPokerEnv()
+    for episode in range(500):
+        env.reset(starting_player=episode % 2)
+        steps = 0
+        while not env.done:
+            valid_actions = env.get_valid_actions()
+            assert valid_actions
+            assert set(valid_actions).issubset({0, 1, 2})
+            env.step(rng.choice(valid_actions))
+            steps += 1
+            # Each of four streets can take check, bet, one raise, then call.
+            assert steps <= 16
+        assert env.winner in (0, 1, None)
+        assert env.get_reward(0) == -env.get_reward(1)

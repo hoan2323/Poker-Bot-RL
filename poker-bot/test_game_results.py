@@ -15,10 +15,10 @@ def test_showdown_result_is_normalized_to_player_ids_and_player_zero_reward():
     assert end_reason == "showdown"
     assert winner in (0, 1, None)
     assert reward in (-env.pot, 0, env.pot)
-    if env.winner == 1:
+    if env.winner == 0:
         assert winner == 0
         assert reward == env.pot
-    elif env.winner == -1:
+    elif env.winner == 1:
         assert winner == 1
         assert reward == -env.pot
     else:
